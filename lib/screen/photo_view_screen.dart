@@ -492,15 +492,29 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
           (context) => DeleteDialog(
             photo: photo,
             onDelete: () async {
-              final galleryModel = Provider.of<GalleryModel>(
-                context,
-                listen: false,
-              );
-              await galleryModel.deletePhoto(photo.id);
-              if (mounted && Navigator.canPop(context)) {
-                Navigator.pop(context); // 다이얼로그 닫기
+              try {
+                final galleryModel = Provider.of<GalleryModel>(
+                  context,
+                  listen: false,
+                );
+                await galleryModel.deletePhoto(photo.id);
+
+                // 다이얼로그 닫기
                 if (mounted && Navigator.canPop(context)) {
-                  Navigator.pop(context); // 사진 보기 화면 닫기
+                  Navigator.pop(context);
+                }
+
+                // 사진 보기 화면 닫기
+                if (mounted && Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                }
+              } catch (e) {
+                debugPrint('사진 삭제 중 오류 발생: $e');
+                if (mounted && Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('사진 삭제 중 오류가 발생했습니다.')),
+                  );
                 }
               }
             },
@@ -599,7 +613,17 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                           } else {
                             galleryModel.addPhotoToAlbum(photoId, album.id);
                           }
-                          Navigator.pop(context);
+                          // 앨범 선택 후 bottom sheet를 닫지 않음
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                isInAlbum
+                                    ? '${album.name}에서 사진을 제거했습니다.'
+                                    : '${album.name}에 사진을 추가했습니다.',
+                              ),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
                         },
                       );
                     },
@@ -690,11 +714,21 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         final name = textController.text.trim();
                         if (name.isNotEmpty) {
-                          galleryModel.createAlbum(name);
-                          Navigator.pop(context);
+                          await galleryModel.createAlbum(name);
+                          final albumId = galleryModel.albums.last.id;
+                          await galleryModel.addPhotoToAlbum(photoId, albumId);
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('새 앨범이 생성되고 사진이 추가되었습니다.'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
                         }
                       },
                       style: ElevatedButton.styleFrom(

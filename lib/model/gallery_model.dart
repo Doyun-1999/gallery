@@ -28,7 +28,7 @@ class GalleryModel extends ChangeNotifier {
   List<Album> get albums => List.unmodifiable(_albums);
   List<Photo> get favorites => List.unmodifiable(_favorites);
   bool get isLoading => _isLoading;
-  bool get hasMore => true;
+  bool get hasMore => _photos.length >= (_currentPage + 1) * _pageSize;
 
   GalleryModel() {
     _initSharedPreferences();
