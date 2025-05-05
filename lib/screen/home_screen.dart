@@ -15,19 +15,14 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  _HomeScreenState createState() => _HomeScreenState();
+  HomeScreenState createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   bool _hasPhotoPermission = false;
   bool _isLoading = true;
-
-  final List<Widget> _screens = [
-    const GalleryScreen(),
-    const FavoritesScreen(),
-    const AlbumsScreen(),
-  ];
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -64,7 +59,12 @@ class _HomeScreenState extends State<HomeScreen> {
         // 권한이 있는 경우 (둘 중 하나라도 있으면)
         setState(() {
           _hasPhotoPermission = true;
+          _isLoading = true;
         });
+
+        // 권한을 처음 허용할 때는 즐겨찾기가 없음
+        final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+        await galleryModel.loadDevicePhotos([]);
 
         setState(() {
           _isLoading = false;
@@ -80,16 +80,89 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // 현재 선택된 화면을 반환하는 메서드
+  Widget _getCurrentScreen() {
+    switch (_selectedIndex) {
+      case 0:
+        return const GalleryScreen();
+      case 1:
+        return const FavoritesScreen();
+      case 2:
+        return const AlbumsScreen();
+      default:
+        return const GalleryScreen();
+    }
+  }
+
+  // 권한 요청 화면을 별도의 메서드로 분리
+  Widget _buildPermissionScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.no_photography, size: 80, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text(
+            '사진 접근 권한이 필요합니다',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '갤러리 기능을 사용하려면 사진 접근 권한을 허용해주세요.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () async {
+              final hasPermission =
+                  await PermissionManager.requestPhotoPermission(context);
+              if (hasPermission) {
+                setState(() {
+                  _hasPhotoPermission = true;
+                  _isLoading = true;
+                });
+                // 권한을 처음 허용할 때는 즐겨찾기가 없음
+                final galleryModel = Provider.of<GalleryModel>(
+                  context,
+                  listen: false,
+                );
+                await galleryModel.loadDevicePhotos([]);
+                setState(() {
+                  _isLoading = false;
+                });
+              }
+            },
+            child: const Text('권한 허용하기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleNavigation(int index) {
+    if (_isNavigating) return;
+    if (_selectedIndex == index) return;
+
+    setState(() {
+      _isNavigating = true;
+      _selectedIndex = index;
+    });
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          _isNavigating = false;
+        });
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Photo Gallery'),
+        title: const Text('사진 갤러리'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.camera_alt),
-            onPressed: () => _takePhoto(context),
-          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed:
@@ -101,104 +174,73 @@ class _HomeScreenState extends State<HomeScreen> {
           _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _hasPhotoPermission
-              ? _screens[_selectedIndex]
-              : Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.no_photography,
-                      size: 80,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '사진 접근 권한이 필요합니다',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '갤러리 기능을 사용하려면 사진 접근 권한을 허용해주세요.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () async {
-                        final hasPermission =
-                            await PermissionManager.requestPhotoPermission(
-                              context,
-                            );
-                        if (hasPermission) {
-                          setState(() {
-                            _hasPhotoPermission = true;
-                            _isLoading = true;
-                          });
-                          // 권한을 처음 허용할 때는 즐겨찾기가 없음
-                          await Provider.of<GalleryModel>(
-                            context,
-                            listen: false,
-                          ).loadDevicePhotos([]);
-                          setState(() {
-                            _isLoading = false;
-                          });
-                        }
-                      },
-                      child: const Text('권한 허용하기'),
-                    ),
-                  ],
-                ),
-              ),
-      bottomNavigationBar:
-          _hasPhotoPermission
-              ? BottomNavigationBar(
-                currentIndex: _selectedIndex,
-                onTap: (index) {
-                  setState(() {
-                    _selectedIndex = index;
-                  });
-                },
-                items: [
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.photo_library),
-                    label: 'Gallery',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.favorite),
-                    label: 'Favorites',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.album),
-                    label: 'Albums',
-                  ),
-                ],
-              )
-              : null,
+              ? _getCurrentScreen()
+              : _buildPermissionScreen(),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).bottomNavigationBarTheme.backgroundColor,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(0, Icons.photo_library, '갤러리'),
+                _buildNavItem(1, Icons.favorite, '즐겨찾기'),
+                _buildNavItem(2, Icons.album, '앨범'),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  Future<void> _takePhoto(BuildContext context) async {
-    final hasPermission = await PermissionManager.requestCameraPermission(
-      context,
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isSelected = _selectedIndex == index;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (_selectedIndex != index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.black12 : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color:
+                    isSelected ? Theme.of(context).primaryColor : Colors.grey,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
-
-    if (hasPermission) {
-      final picker = ImagePicker();
-      final imageFile = await picker.pickImage(source: ImageSource.camera);
-
-      if (imageFile != null) {
-        await Provider.of<GalleryModel>(
-          context,
-          listen: false,
-        ).addPhoto(File(imageFile.path));
-      }
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('카메라 접근 권한이 필요합니다.')));
-    }
   }
 
   void _refreshGallery(BuildContext context) async {

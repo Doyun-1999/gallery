@@ -74,44 +74,64 @@ class PermissionManager {
 
   // 카메라 권한 확인 및 요청
   static Future<bool> requestCameraPermission(BuildContext context) async {
-    final status = await Permission.camera.status;
+    final status = await Permission.camera.request();
 
     if (status.isGranted) {
       return true;
-    } else {
-      final bool requestPermission = await _showPermissionDialog(
-        context,
-        '카메라 접근 권한 필요',
-        '카메라 기능을 사용하려면 카메라 접근 권한이 필요합니다. 권한을 허용하시겠습니까?',
-        '권한 허용하기',
-        '나중에',
+    } else if (status.isDenied) {
+      // 권한이 거부된 경우 설정으로 이동할지 물어보기
+      final shouldOpenSettings = await showDialog<bool>(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('카메라 권한 필요'),
+              content: const Text(
+                '사진을 찍기 위해서는 카메라 권한이 필요합니다. 설정에서 권한을 허용하시겠습니까?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('취소'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('설정으로 이동'),
+                ),
+              ],
+            ),
       );
 
-      if (requestPermission) {
-        final status = await Permission.camera.request();
-
-        if (status.isGranted) {
-          return true;
-        } else if (status.isPermanentlyDenied) {
-          final bool goToSettings = await _showPermissionDialog(
-            context,
-            '권한이 거부됨',
-            '카메라 접근 권한이 거부되었습니다. 카메라 기능을 사용하려면 설정에서 권한을 허용해주세요.',
-            '설정으로 이동',
-            '취소',
-          );
-
-          if (goToSettings) {
-            await AppSettings.openAppSettings();
-            // 앱 설정에서 돌아오면 권한을 다시 확인
-            return Permission.camera.isGranted;
-          }
-        }
-        return false;
-      } else {
-        return false;
+      if (shouldOpenSettings == true) {
+        await AppSettings.openAppSettings();
       }
+    } else if (status.isPermanentlyDenied) {
+      // 권한이 영구적으로 거부된 경우 설정으로 이동
+      await showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('카메라 권한 필요'),
+              content: const Text(
+                '사진을 찍기 위해서는 카메라 권한이 필요합니다. 설정에서 권한을 허용해주세요.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('취소'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await AppSettings.openAppSettings();
+                  },
+                  child: const Text('설정으로 이동'),
+                ),
+              ],
+            ),
+      );
     }
+
+    return false;
   }
 
   // 설정에서 돌아온 후 권한 확인

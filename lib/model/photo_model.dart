@@ -1,40 +1,49 @@
+import 'package:photo_manager/photo_manager.dart';
+
 class Photo {
   final String id;
   final String path;
-  final DateTime dateAdded;
-  final bool isFavorite;
-  final DateTime? favoritedAt;
+  final DateTime date;
+  final String? albumId;
+  bool isFavorite;
+  String? memo;
+  String? voiceMemoPath;
+  DateTime? memoDate;
+  final AssetEntity? asset;
 
   Photo({
     required this.id,
     required this.path,
-    required this.dateAdded,
+    required this.date,
+    this.albumId,
     this.isFavorite = false,
-    this.favoritedAt,
+    this.memo,
+    this.voiceMemoPath,
+    this.memoDate,
+    this.asset,
   });
 
   Photo copyWith({
     String? id,
     String? path,
-    DateTime? dateAdded,
+    DateTime? date,
+    String? albumId,
     bool? isFavorite,
-    DateTime? favoritedAt,
+    String? memo,
+    String? voiceMemoPath,
+    DateTime? memoDate,
+    AssetEntity? asset,
   }) {
     return Photo(
       id: id ?? this.id,
       path: path ?? this.path,
-      dateAdded: dateAdded ?? this.dateAdded,
+      date: date ?? this.date,
+      albumId: albumId ?? this.albumId,
       isFavorite: isFavorite ?? this.isFavorite,
-      favoritedAt: favoritedAt ?? this.favoritedAt,
-    );
-  }
-
-  factory Photo.fromJson(Map<String, dynamic> json) {
-    return Photo(
-      id: json['id'],
-      path: json['path'],
-      dateAdded: DateTime.parse(json['dateAdded']),
-      isFavorite: json['isFavorite'] ?? false,
+      memo: memo ?? this.memo,
+      voiceMemoPath: voiceMemoPath ?? this.voiceMemoPath,
+      memoDate: memoDate ?? this.memoDate,
+      asset: asset ?? this.asset,
     );
   }
 
@@ -42,8 +51,27 @@ class Photo {
     return {
       'id': id,
       'path': path,
-      'dateAdded': dateAdded.toIso8601String(),
+      'date': date.toIso8601String(),
+      'albumId': albumId,
       'isFavorite': isFavorite,
+      'memo': memo,
+      'voiceMemoPath': voiceMemoPath,
+      'memoDate': memoDate?.toIso8601String(),
     };
+  }
+
+  factory Photo.fromJson(Map<String, dynamic> json) {
+    return Photo(
+      id: json['id'],
+      path: json['path'],
+      date: DateTime.parse(json['date']),
+      albumId: json['albumId'],
+      isFavorite: json['isFavorite'] ?? false,
+      memo: json['memo'],
+      voiceMemoPath: json['voiceMemoPath'],
+      memoDate:
+          json['memoDate'] != null ? DateTime.parse(json['memoDate']) : null,
+      asset: json['asset'],
+    );
   }
 }

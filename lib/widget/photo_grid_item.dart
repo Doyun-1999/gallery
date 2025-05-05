@@ -4,47 +4,77 @@ import 'dart:io';
 
 class PhotoGridItem extends StatelessWidget {
   final Photo photo;
-  final Function() onTap;
-  final Function() onFavoriteToggle;
+  final ImageProvider imageProvider;
+  final VoidCallback onTap;
 
   const PhotoGridItem({
     super.key,
     required this.photo,
+    required this.imageProvider,
     required this.onTap,
-    required this.onFavoriteToggle,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 이미지
-          Image.file(File(photo.path), fit: BoxFit.cover),
-
-          // 즐겨찾기 버튼
-          Positioned(
-            top: 4,
-            right: 4,
-            child: GestureDetector(
-              onTap: onFavoriteToggle,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
-                  shape: BoxShape.circle,
+      child: Hero(
+        tag: 'photo_${photo.id}',
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+          ),
+          child: Stack(
+            children: [
+              if (photo.isFavorite)
+                const Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Icon(Icons.favorite, color: Colors.red, size: 20),
                 ),
-                child: Icon(
-                  photo.isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color: photo.isFavorite ? Colors.red : Colors.white,
-                  size: 20,
+              // 메모와 음성 메모 아이콘
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 텍스트 메모 아이콘
+                    if (photo.memo != null && photo.memo!.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(right: 4),
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.note,
+                          color: Colors.white,
+                          size: 12,
+                        ),
+                      ),
+                    // 음성 메모 아이콘
+                    if (photo.voiceMemoPath != null)
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.mic,
+                          color: Colors.white,
+                          size: 12,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

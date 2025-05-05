@@ -1,9 +1,18 @@
 // screens/favorites_screen.dart
 import 'package:flutter/material.dart';
 import 'package:gallery/model/gallery_model.dart';
+import 'package:gallery/model/photo_model.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import 'photo_view_screen.dart';
+import 'package:gallery/widget/photo_grid_item.dart';
+
+class Range {
+  final int start;
+  final int end;
+
+  Range(this.start, this.end);
+}
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -14,6 +23,56 @@ class FavoritesScreen extends StatefulWidget {
 
 class _FavoritesScreenState extends State<FavoritesScreen> {
   bool _showRecent = true;
+  final Map<String, ImageProvider> _imageCache = {};
+  static const int _maxCacheSize = 50;
+  int _lastPreloadIndex = -1;
+
+  @override
+  void dispose() {
+    _imageCache.clear();
+    super.dispose();
+  }
+
+  ImageProvider _getImageProvider(String path) {
+    if (!_imageCache.containsKey(path)) {
+      if (_imageCache.length >= _maxCacheSize) {
+        final oldestKey = _imageCache.keys.first;
+        _imageCache.remove(oldestKey);
+      }
+
+      final file = File(path);
+      final imageProvider = ResizeImage(
+        FileImage(file),
+        width: 300,
+        height: 300,
+      );
+      _imageCache[path] = imageProvider;
+    }
+    return _imageCache[path]!;
+  }
+
+  void _preloadImages(List<Photo> photos) {
+    if (photos.isEmpty) return;
+
+    final visibleRange = _getVisibleRange();
+    final startIndex = visibleRange.start;
+    final endIndex = visibleRange.end;
+
+    if (startIndex > _lastPreloadIndex || endIndex < _lastPreloadIndex - 12) {
+      for (int i = startIndex; i < endIndex; i++) {
+        if (i < photos.length) {
+          _getImageProvider(photos[i].path);
+        }
+      }
+      _lastPreloadIndex = startIndex;
+    }
+  }
+
+  Range _getVisibleRange() {
+    final firstVisibleItem = 0; // 즐겨찾기 화면은 스크롤 위치가 고정되어 있으므로 0부터 시작
+    final lastVisibleItem = 12; // 한 번에 보여줄 아이템 수
+    return Range(firstVisibleItem, lastVisibleItem);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +86,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         if (favorites.isEmpty) {
           return const Center(child: Text('아직 즐겨찾기에 추가된 사진이 없습니다.'));
         }
+
+        // 빌드 후에 프리로드 실행
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _preloadImages(favorites);
+        });
 
         return Scaffold(
           appBar: AppBar(
@@ -61,7 +125,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             itemCount: favorites.length,
             itemBuilder: (context, index) {
               final photo = favorites[index];
-              return GestureDetector(
+              return PhotoGridItem(
+                photo: photo,
+                imageProvider: _getImageProvider(photo.path),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -74,59 +140,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                     ),
                   );
                 },
-                onLongPress:
-                    () => _showQuickActions(context, galleryModel, photo.id),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.file(File(photo.path), fit: BoxFit.cover),
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.favorite,
-                            color: Colors.red,
-                            size: 20,
-                          ),
-                          onPressed: () {
-                            galleryModel.toggleFavorite(photo.id);
-                          },
-                          iconSize: 20,
-                          padding: const EdgeInsets.all(4),
-                          constraints: const BoxConstraints(),
-                        ),
-                      ),
-                    ),
-                    if (_showRecent && photo.favoritedAt != null)
-                      Positioned(
-                        bottom: 4,
-                        left: 4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            _formatDate(photo.favoritedAt!),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
               );
             },
           ),
@@ -214,7 +227,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     );
   }
 
-  // 앨범에 추가 대화상자
   void _showAddToAlbumDialog(
     BuildContext context,
     GalleryModel galleryModel,
