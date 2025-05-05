@@ -10,6 +10,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class GalleryModel extends ChangeNotifier {
   List<Photo> _photos = [];
@@ -262,22 +263,65 @@ class GalleryModel extends ChangeNotifier {
   }
 
   Future<void> deletePhoto(String photoId) async {
-    final photo = _photos.firstWhere((photo) => photo.id == photoId);
+    try {
+      final photo = _photos.firstWhere((photo) => photo.id == photoId);
 
-    for (var album in _albums) {
-      album.photoIds.remove(photoId);
+      // 시스템에서 파일 삭제
+      try {
+        if (Platform.isAndroid) {
+          final status = await Permission.storage.status;
+          if (!status.isGranted) {
+            final result = await Permission.storage.request();
+            if (!result.isGranted) {
+              throw Exception('저장소 접근 권한이 필요합니다.');
+            }
+          }
+
+          // Android MediaStore를 통한 삭제
+          final file = File(photo.path);
+          if (await file.exists()) {
+            if (photo.asset != null) {
+              await PhotoManager.editor.deleteWithIds([photo.asset!.id]);
+            }
+            await file.delete();
+          }
+        } else if (Platform.isIOS) {
+          // iOS의 경우
+          if (photo.asset != null) {
+            await PhotoManager.editor.deleteWithIds([photo.asset!.id]);
+          } else {
+            final file = File(photo.path);
+            if (await file.exists()) {
+              await file.delete();
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('시스템 파일 삭제 실패: $e');
+        // 시스템에서 삭제 실패해도 앱 내 데이터는 정리
+      }
+
+      // 앨범에서 사진 ID 제거
+      for (var album in _albums) {
+        album.photoIds.remove(photoId);
+      }
+
+      // 사진 목록에서 제거
+      _photos.removeWhere((photo) => photo.id == photoId);
+
+      // 즐겨찾기에서도 제거
+      _favorites.removeWhere((photo) => photo.id == photoId);
+
+      // 데이터 저장
+      await _savePhotos();
+      await _saveAlbums();
+      await _saveFavorites();
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('사진 삭제 중 오류 발생: $e');
+      rethrow;
     }
-
-    final file = File(photo.path);
-    if (await file.exists()) {
-      await file.delete();
-    }
-
-    _photos.removeWhere((photo) => photo.id == photoId);
-
-    await _savePhotos();
-    await _saveAlbums();
-    notifyListeners();
   }
 
   Future<void> createAlbum(String name) async {
@@ -497,5 +541,13 @@ class GalleryModel extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  bool isPhotoInAlbum(String photoId, String albumId) {
+    final album = _albums.firstWhere(
+      (album) => album.id == albumId,
+      orElse: () => throw Exception('Album not found'),
+    );
+    return album.photoIds.contains(photoId);
   }
 }

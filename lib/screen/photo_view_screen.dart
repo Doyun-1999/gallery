@@ -95,11 +95,24 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
     final galleryModel = Provider.of<GalleryModel>(context);
     final List<Photo> photoList = _getPhotoList(galleryModel);
 
+    if (photoList.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+      return;
+    }
+
     final int initialIndex = photoList.indexWhere(
       (photo) => photo.id == widget.photoId,
     );
     if (initialIndex == -1) {
-      Navigator.pop(context);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
       return;
     }
 
@@ -129,7 +142,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
             '${directory.path}/voice_memo_${DateTime.now().millisecondsSinceEpoch}.m4a';
 
         await _audioRecorder.start(
-          RecordConfig(
+          const RecordConfig(
             encoder: AudioEncoder.aacLc,
             bitRate: 128000,
             sampleRate: 44100,
@@ -247,9 +260,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
           orElse: () => photoList.first,
         );
 
-        // 현재 사진의 메모 가져오기
-        final currentMemo = galleryModel.getMemo(_currentPhotoId);
-
         return Scaffold(
           backgroundColor: Colors.black,
           extendBodyBehindAppBar: true,
@@ -277,55 +287,30 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                           galleryModel.toggleFavorite(currentPhoto.id);
                         },
                       ),
-                      PopupMenuButton(
-                        enabled: !_isZoomed,
-                        icon: const Icon(Icons.more_vert, color: Colors.white),
-                        onSelected: (value) {
-                          if (value == 'album') {
-                            _showAddToAlbumDialog(
-                              context,
-                              galleryModel,
-                              currentPhoto.id,
-                            );
-                          } else if (value == 'info') {
-                            _showPhotoInfoDialog(context, currentPhoto);
-                          } else if (value == 'delete') {
-                            _showDeleteDialog(context, currentPhoto);
-                          }
+                      IconButton(
+                        icon: const Icon(
+                          Icons.add_to_photos,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          _showAddToAlbumDialog(
+                            context,
+                            galleryModel,
+                            currentPhoto.id,
+                          );
                         },
-                        itemBuilder:
-                            (context) => [
-                              const PopupMenuItem(
-                                value: 'album',
-                                child: ListTile(
-                                  leading: Icon(Icons.add_to_photos),
-                                  title: Text('앨범에 추가'),
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'info',
-                                child: ListTile(
-                                  leading: Icon(Icons.info),
-                                  title: Text('정보'),
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: ListTile(
-                                  leading: Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
-                                  ),
-                                  title: Text(
-                                    '삭제',
-                                    style: TextStyle(color: Colors.red),
-                                  ),
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                              ),
-                            ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.info, color: Colors.white),
+                        onPressed: () {
+                          _showPhotoInfoDialog(context, currentPhoto);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () {
+                          _showDeleteDialog(context, currentPhoto);
+                        },
                       ),
                     ],
                   )
@@ -391,7 +376,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         // 메모 표시
-                        if (currentMemo != null && currentMemo.isNotEmpty)
+                        if (_currentMemo?.isNotEmpty ?? false)
                           Container(
                             margin: const EdgeInsets.only(bottom: 16),
                             padding: const EdgeInsets.all(12),
@@ -413,7 +398,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    currentMemo,
+                                    _currentMemo ?? '',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 14,
@@ -429,7 +414,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                           children: [
                             _buildControlButton(
                               icon:
-                                  currentMemo != null ||
+                                  _currentMemo != null ||
                                           _currentVoiceMemoPath != null
                                       ? Icons.note
                                       : Icons.note_add,
@@ -506,13 +491,18 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
       builder:
           (context) => DeleteDialog(
             photo: photo,
-            onDelete: () {
+            onDelete: () async {
               final galleryModel = Provider.of<GalleryModel>(
                 context,
                 listen: false,
               );
-              galleryModel.deletePhoto(photo.id);
-              Navigator.pop(context);
+              await galleryModel.deletePhoto(photo.id);
+              if (mounted && Navigator.canPop(context)) {
+                Navigator.pop(context); // 다이얼로그 닫기
+                if (mounted && Navigator.canPop(context)) {
+                  Navigator.pop(context); // 사진 보기 화면 닫기
+                }
+              }
             },
           ),
     );
@@ -523,9 +513,206 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
     GalleryModel galleryModel,
     String photoId,
   ) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlbumDialog(photoId: photoId),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '앨범에 추가',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Consumer<GalleryModel>(
+                builder: (context, galleryModel, child) {
+                  final albums = galleryModel.albums;
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: albums.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == albums.length) {
+                        return ListTile(
+                          leading: const Icon(Icons.add),
+                          title: const Text('새 앨범 만들기'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showCreateAlbumDialog(
+                              context,
+                              galleryModel,
+                              photoId,
+                            );
+                          },
+                        );
+                      }
+                      final album = albums[index];
+                      final isInAlbum = galleryModel.isPhotoInAlbum(
+                        photoId,
+                        album.id,
+                      );
+                      return ListTile(
+                        leading: const Icon(Icons.photo_album),
+                        title: Text(album.name),
+                        trailing:
+                            isInAlbum
+                                ? const Icon(Icons.check, color: Colors.green)
+                                : null,
+                        onTap: () {
+                          if (isInAlbum) {
+                            galleryModel.removePhotoFromAlbum(
+                              photoId,
+                              album.id,
+                            );
+                          } else {
+                            galleryModel.addPhotoToAlbum(photoId, album.id);
+                          }
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showCreateAlbumDialog(
+    BuildContext context,
+    GalleryModel galleryModel,
+    String photoId,
+  ) {
+    final textController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '새 앨범 만들기',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: textController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: '앨범 이름을 입력하세요',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.1),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('취소'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        final name = textController.text.trim();
+                        if (name.isNotEmpty) {
+                          galleryModel.createAlbum(name);
+                          Navigator.pop(context);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('만들기'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

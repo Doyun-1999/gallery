@@ -27,12 +27,6 @@ class PhotoGridItem extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              if (photo.isFavorite)
-                const Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Icon(Icons.favorite, color: Colors.red, size: 20),
-                ),
               // 메모와 음성 메모 아이콘
               Positioned(
                 bottom: 4,
