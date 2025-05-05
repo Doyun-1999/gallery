@@ -43,18 +43,12 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
   late AnimationController _animationController;
   late Animation<double> _animation;
   final bool _showingDetails = true;
-  final _audioRecorder = AudioRecorder();
-  late final AudioPlayer _audioPlayer;
-  bool _isRecording = false;
-  bool _isPlaying = false;
-  String? _currentVoiceMemoPath;
   String? _currentMemo;
 
   @override
   void initState() {
     super.initState();
     _currentPhotoId = widget.photoId;
-    _audioPlayer = AudioPlayer();
 
     // 애니메이션 컨트롤러 설정
     _animationController = AnimationController(
@@ -84,8 +78,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
   void dispose() {
     _animationController.dispose();
     _pageController.dispose();
-    _audioRecorder.dispose();
-    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -134,92 +126,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
     }
   }
 
-  Future<void> _startRecording() async {
-    try {
-      if (await _audioRecorder.hasPermission()) {
-        final directory = await getApplicationDocumentsDirectory();
-        final path =
-            '${directory.path}/voice_memo_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
-        await _audioRecorder.start(
-          const RecordConfig(
-            encoder: AudioEncoder.aacLc,
-            bitRate: 128000,
-            sampleRate: 44100,
-          ),
-          path: path,
-        );
-
-        setState(() {
-          _isRecording = true;
-          _currentVoiceMemoPath = path;
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('녹음 시작 중 오류가 발생했습니다.')));
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    try {
-      final path = await _audioRecorder.stop();
-      setState(() {
-        _isRecording = false;
-      });
-
-      if (path != null) {
-        final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-        await galleryModel.addVoiceMemo(_currentPhotoId, path);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('녹음 중지 중 오류가 발생했습니다.')));
-    }
-  }
-
-  Future<void> _playVoiceMemo(String path) async {
-    try {
-      if (_isPlaying) {
-        await _audioPlayer.pause();
-        setState(() {
-          _isPlaying = false;
-        });
-      } else {
-        if (_audioPlayer.playing) {
-          await _audioPlayer.play();
-        } else {
-          await _audioPlayer.setFilePath(path);
-          await _audioPlayer.play();
-        }
-        setState(() {
-          _isPlaying = true;
-        });
-
-        _audioPlayer.playerStateStream.listen((state) {
-          if (state.processingState == ProcessingState.completed) {
-            if (mounted) {
-              setState(() {
-                _isPlaying = false;
-              });
-            }
-          }
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('음성 메모 재생 중 오류가 발생했습니다.')));
-      if (mounted) {
-        setState(() {
-          _isPlaying = false;
-        });
-      }
-    }
-  }
-
   Future<void> _loadMemoData() async {
     final galleryModel = Provider.of<GalleryModel>(context, listen: false);
     final photo = galleryModel.photos.firstWhere(
@@ -228,7 +134,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
     );
 
     setState(() {
-      _currentVoiceMemoPath = photo.voiceMemoPath;
       _currentMemo = photo.memo;
     });
   }
@@ -408,26 +313,47 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                               ],
                             ),
                           ),
+                        // 음성 메모 표시
+                        if (currentPhoto.voiceMemoPath != null &&
+                            currentPhoto.voiceMemoPath!.isNotEmpty)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Color.alphaBlend(
+                                Colors.white.withAlpha(26),
+                                Colors.transparent,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.audiotrack,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  '음성 메모',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         // 컨트롤 버튼
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             _buildControlButton(
                               icon:
-                                  _currentMemo != null ||
-                                          _currentVoiceMemoPath != null
+                                  _currentMemo != null
                                       ? Icons.note
                                       : Icons.note_add,
                               onPressed: () => _showMemoDialog(currentPhoto),
-                            ),
-                            const SizedBox(width: 24),
-                            _buildControlButton(
-                              icon: _isRecording ? Icons.stop : Icons.mic,
-                              color: _isRecording ? Colors.red : Colors.white,
-                              onPressed:
-                                  _isRecording
-                                      ? _stopRecording
-                                      : _startRecording,
                             ),
                           ],
                         ),

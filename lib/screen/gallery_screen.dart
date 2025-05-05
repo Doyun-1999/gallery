@@ -54,7 +54,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
       final imageProvider = ResizeImage(
         FileImage(file),
         width: 300,
-        height: 300,
+        allowUpscaling: false,
+        policy: ResizeImagePolicy.fit,
       );
       _imageCache[path] = imageProvider;
     }

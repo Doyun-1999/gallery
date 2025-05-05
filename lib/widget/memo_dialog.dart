@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:gallery/model/photo_model.dart';
+import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:gallery/model/gallery_model.dart';
 import 'dart:async';
@@ -16,50 +19,273 @@ class MemoDialog extends StatefulWidget {
 
 class _MemoDialogState extends State<MemoDialog> {
   late final TextEditingController _textController;
+  final _audioRecorder = AudioRecorder();
   late final AudioPlayer _audioPlayer;
-  late final StreamController<bool> _isPlayingController;
-  late final StreamController<String> _memoLengthController;
+  bool _isRecording = false;
+  bool _isPlaying = false;
+  String? _currentVoiceMemoPath;
+  Duration _recordingDuration = Duration.zero;
+  Timer? _recordingTimer;
 
   @override
   void initState() {
     super.initState();
     _textController = TextEditingController(text: widget.photo.memo);
     _audioPlayer = AudioPlayer();
-    _isPlayingController = StreamController<bool>();
-    _memoLengthController = StreamController<String>();
+    _currentVoiceMemoPath = widget.photo.voiceMemoPath;
 
     _audioPlayer.playerStateStream.listen((state) {
-      if (!_isPlayingController.isClosed) {
-        _isPlayingController.add(state.playing);
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing;
+        });
       }
     });
+
+    // 초기 음성 메모 duration 설정
+    if (_currentVoiceMemoPath != null) {
+      _initializeAudioDuration();
+    }
+  }
+
+  Future<void> _initializeAudioDuration() async {
+    if (_currentVoiceMemoPath != null) {
+      try {
+        await _audioPlayer.setFilePath(_currentVoiceMemoPath!);
+        if (mounted) {
+          setState(() {});
+        }
+      } catch (e) {
+        // duration 초기화 실패 시 무시
+      }
+    }
   }
 
   @override
   void dispose() {
     _textController.dispose();
+    _audioRecorder.dispose();
     _audioPlayer.dispose();
-    _isPlayingController.close();
-    _memoLengthController.close();
+    _recordingTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _playVoiceMemo() async {
+  void _startRecordingTimer() {
+    _recordingDuration = Duration.zero;
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _recordingDuration += const Duration(seconds: 1);
+        });
+      }
+    });
+  }
+
+  void _stopRecordingTimer() {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    _recordingDuration = Duration.zero;
+  }
+
+  Future<void> _startRecording() async {
     try {
-      if (_audioPlayer.playing) {
-        await _audioPlayer.pause();
-      } else {
-        await _audioPlayer.setFilePath(widget.photo.voiceMemoPath!);
-        await _audioPlayer.play();
+      if (await _audioRecorder.hasPermission()) {
+        final appDir = await getApplicationDocumentsDirectory();
+        final fileName =
+            'voice_memo_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        final path = '${appDir.path}/$fileName';
+
+        // 기존 파일이 있다면 삭제
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+
+        // 디렉토리가 존재하는지 확인하고 생성
+        final directory = Directory(appDir.path);
+        if (!await directory.exists()) {
+          await directory.create(recursive: true);
+        }
+
+        await _audioRecorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.aacLc,
+            bitRate: 128000,
+            sampleRate: 44100,
+            numChannels: 1,
+          ),
+          path: path,
+        );
+
+        setState(() {
+          _isRecording = true;
+          _currentVoiceMemoPath = path;
+        });
+        _startRecordingTimer();
       }
     } catch (e) {
-      print('음성 메모 재생 중 오류 발생: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('음성 메모 재생 중 오류가 발생했습니다.')));
+        ).showSnackBar(const SnackBar(content: Text('녹음 시작 중 오류가 발생했습니다.')));
       }
     }
+  }
+
+  Future<void> _stopRecording() async {
+    try {
+      if (!_isRecording) {
+        return;
+      }
+
+      final isRecording = await _audioRecorder.isRecording();
+      if (!isRecording) {
+        return;
+      }
+
+      _stopRecordingTimer();
+
+      final path = await _audioRecorder.stop();
+
+      if (path != null) {
+        final file = File(path);
+        int retryCount = 0;
+        bool fileExists = false;
+        while (retryCount < 5) {
+          fileExists = await file.exists();
+          if (fileExists) {
+            break;
+          }
+          await Future.delayed(const Duration(milliseconds: 200));
+          retryCount++;
+        }
+
+        if (fileExists) {
+          final fileSize = await file.length();
+          if (fileSize > 0) {
+            try {
+              await file.readAsBytes();
+            } catch (e) {
+              throw Exception('녹음 파일을 읽을 수 없습니다.');
+            }
+
+            if (mounted) {
+              setState(() {
+                _currentVoiceMemoPath = path;
+                _isRecording = false;
+              });
+            }
+
+            try {
+              final galleryModel = Provider.of<GalleryModel>(
+                context,
+                listen: false,
+              );
+              await galleryModel.addVoiceMemo(widget.photo.id, path);
+            } catch (e) {
+              throw Exception('파일 경로 저장 중 오류가 발생했습니다.');
+            }
+
+            // 녹음 중지 후 duration 초기화
+            await _initializeAudioDuration();
+
+            await Future.delayed(const Duration(milliseconds: 1000));
+            final finalFileExists = await file.exists();
+            if (!finalFileExists) {
+              throw Exception('녹음 파일이 저장되지 않았습니다.');
+            }
+          } else {
+            throw Exception('녹음 파일이 비어 있습니다.');
+          }
+        } else {
+          throw Exception('녹음 파일이 생성되지 않았습니다.');
+        }
+      } else {
+        throw Exception('녹음 파일 경로를 가져올 수 없습니다.');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('녹음 중지 중 오류가 발생했습니다: ${e.toString()}')),
+        );
+        setState(() {
+          _isRecording = false;
+          _currentVoiceMemoPath = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _playVoiceMemo() async {
+    if (_currentVoiceMemoPath == null) return;
+
+    try {
+      final file = File(_currentVoiceMemoPath!);
+      if (!await file.exists()) {
+        throw Exception('음성 메모 파일을 찾을 수 없습니다.');
+      }
+
+      final fileSize = await file.length();
+      if (fileSize == 0) {
+        throw Exception('음성 메모 파일이 비어 있습니다.');
+      }
+
+      try {
+        await file.readAsBytes();
+      } catch (e) {
+        throw Exception('음성 메모 파일을 읽을 수 없습니다.');
+      }
+
+      if (_isPlaying) {
+        await _audioPlayer.pause();
+        setState(() {
+          _isPlaying = false;
+        });
+      } else {
+        if (!await file.exists()) {
+          throw Exception('음성 메모 파일이 삭제되었습니다.');
+        }
+
+        await _audioPlayer.stop();
+        await _audioPlayer.setFilePath(_currentVoiceMemoPath!);
+        await _audioPlayer.play();
+        setState(() {
+          _isPlaying = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('음성 메모 재생 중 오류가 발생했습니다: ${e.toString()}')),
+        );
+        setState(() {
+          _currentVoiceMemoPath = null;
+          _isPlaying = false;
+        });
+      }
+    }
+  }
+
+  void _deleteVoiceMemo() {
+    if (_currentVoiceMemoPath != null) {
+      final file = File(_currentVoiceMemoPath!);
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+      setState(() {
+        _currentVoiceMemoPath = null;
+        _isPlaying = false;
+      });
+      final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+      galleryModel.addVoiceMemo(widget.photo.id, '');
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$minutes:$seconds";
   }
 
   @override
@@ -79,7 +305,7 @@ class _MemoDialogState extends State<MemoDialog> {
           _buildHeader(),
           _buildMemoInput(),
           _buildMemoLengthIndicator(),
-          if (widget.photo.voiceMemoPath != null) _buildVoiceMemoSection(),
+          _buildVoiceMemoControls(),
           _buildActionButtons(),
         ],
       ),
@@ -146,11 +372,6 @@ class _MemoDialogState extends State<MemoDialog> {
           fillColor: Colors.white.withOpacity(0.1),
         ),
         maxLines: 3,
-        onChanged: (value) {
-          if (!_memoLengthController.isClosed) {
-            _memoLengthController.add(value);
-          }
-        },
       ),
     );
   }
@@ -158,39 +379,94 @@ class _MemoDialogState extends State<MemoDialog> {
   Widget _buildMemoLengthIndicator() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: StreamBuilder<String>(
-        stream: _memoLengthController.stream,
-        builder: (context, snapshot) {
-          final length = snapshot.data?.length ?? 0;
-          return Text(
-            '$length/100',
-            style: TextStyle(color: length > 100 ? Colors.red : Colors.grey),
-          );
-        },
+      child: Text(
+        '${_textController.text.length}/100',
+        style: TextStyle(
+          color: _textController.text.length > 100 ? Colors.red : Colors.grey,
+        ),
       ),
     );
   }
 
-  Widget _buildVoiceMemoSection() {
+  Widget _buildVoiceMemoControls() {
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Column(
         children: [
-          StreamBuilder<bool>(
-            stream: _isPlayingController.stream,
-            initialData: false,
-            builder: (context, snapshot) {
-              final isPlaying = snapshot.data ?? false;
-              return IconButton(
-                icon: Icon(
-                  isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: isPlaying ? Colors.red : Colors.blue,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                onPressed: _isRecording ? _stopRecording : _startRecording,
+                color: _isRecording ? Colors.red : Colors.white,
+              ),
+              if (!_isRecording && _currentVoiceMemoPath != null) ...[
+                IconButton(
+                  icon: Icon(
+                    _isPlaying ? Icons.pause : Icons.play_arrow,
+                    color: _isPlaying ? Colors.red : Colors.blue,
+                  ),
+                  onPressed: _playVoiceMemo,
                 ),
-                onPressed: _playVoiceMemo,
-              );
-            },
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: _deleteVoiceMemo,
+                  color: Colors.red,
+                ),
+              ],
+            ],
           ),
-          const Text('음성 메모', style: TextStyle(color: Colors.white)),
+          if (_isRecording || (!_isRecording && _currentVoiceMemoPath != null))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.audiotrack,
+                      color: Colors.white.withOpacity(0.7),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _isRecording ? '녹음 중' : '음성 메모',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 1,
+                      height: 12,
+                      color: Colors.white.withOpacity(0.3),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatDuration(
+                        _isRecording
+                            ? _recordingDuration
+                            : (_audioPlayer.duration ?? Duration.zero),
+                      ),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

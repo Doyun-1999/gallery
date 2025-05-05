@@ -44,7 +44,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       final imageProvider = ResizeImage(
         FileImage(file),
         width: 300,
-        height: 300,
+        allowUpscaling: false,
+        policy: ResizeImagePolicy.fit,
       );
       _imageCache[path] = imageProvider;
     }
@@ -69,8 +70,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   Range _getVisibleRange() {
-    final firstVisibleItem = 0; // 즐겨찾기 화면은 스크롤 위치가 고정되어 있으므로 0부터 시작
-    final lastVisibleItem = 12; // 한 번에 보여줄 아이템 수
+    const firstVisibleItem = 0; // 즐겨찾기 화면은 스크롤 위치가 고정되어 있으므로 0부터 시작
+    const lastVisibleItem = 12; // 한 번에 보여줄 아이템 수
     return Range(firstVisibleItem, lastVisibleItem);
   }
 

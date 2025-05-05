@@ -55,6 +55,8 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                                         albumPhotos.first.path,
                                       ),
                                       fit: BoxFit.cover,
+                                      width: 50,
+                                      height: 50,
                                       errorBuilder: (
                                         context,
                                         error,

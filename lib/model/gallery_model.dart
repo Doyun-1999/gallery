@@ -28,7 +28,7 @@ class GalleryModel extends ChangeNotifier {
   List<Album> get albums => List.unmodifiable(_albums);
   List<Photo> get favorites => List.unmodifiable(_favorites);
   bool get isLoading => _isLoading;
-  bool get hasMore => _photos.length >= (_currentPage + 1) * _pageSize;
+  bool get hasMore => _photos.length < (_currentPage + 1) * _pageSize;
 
   GalleryModel() {
     _initSharedPreferences();
@@ -381,35 +381,57 @@ class GalleryModel extends ChangeNotifier {
 
   Future<void> addVoiceMemo(String photoId, String path) async {
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final fileName =
-          'voice_memo_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      final newPath = '${appDir.path}/$fileName';
-
-      final sourceFile = File(path);
-      final targetFile = File(newPath);
-      await sourceFile.copy(newPath);
-
-      if (await sourceFile.exists()) {
-        await sourceFile.delete();
-      }
-
       final photo = _photos.firstWhere((p) => p.id == photoId);
-      photo.voiceMemoPath = newPath;
-      photo.memoDate = DateTime.now();
 
-      final voiceMemoMap = <String, String>{};
-      for (var photo in _photos) {
-        if (photo.voiceMemoPath != null) {
-          voiceMemoMap[photo.id] = photo.voiceMemoPath!;
+      // 기존 음성 메모가 있다면 삭제
+      if (photo.voiceMemoPath != null && photo.voiceMemoPath!.isNotEmpty) {
+        final oldFile = File(photo.voiceMemoPath!);
+        if (await oldFile.exists()) {
+          await oldFile.delete();
         }
       }
 
-      final voiceMemoJson = json.encode(voiceMemoMap);
-      await _prefs.setString(_voiceMemoKey, voiceMemoJson);
+      // 새로운 파일 경로가 비어있지 않은 경우에만 처리
+      if (path.isNotEmpty) {
+        final sourceFile = File(path);
+        if (await sourceFile.exists()) {
+          photo.voiceMemoPath = path;
+          photo.memoDate = DateTime.now();
+
+          final voiceMemoMap = <String, String>{};
+          for (var photo in _photos) {
+            if (photo.voiceMemoPath != null &&
+                photo.voiceMemoPath!.isNotEmpty) {
+              voiceMemoMap[photo.id] = photo.voiceMemoPath!;
+            }
+          }
+
+          final voiceMemoJson = json.encode(voiceMemoMap);
+          await _prefs.setString(_voiceMemoKey, voiceMemoJson);
+        }
+      } else {
+        // 빈 경로가 전달된 경우 음성 메모 삭제
+        photo.voiceMemoPath = null;
+        photo.memoDate = null;
+
+        final voiceMemoMap = <String, String>{};
+        for (var photo in _photos) {
+          if (photo.voiceMemoPath != null && photo.voiceMemoPath!.isNotEmpty) {
+            voiceMemoMap[photo.id] = photo.voiceMemoPath!;
+          }
+        }
+
+        if (voiceMemoMap.isEmpty) {
+          await _prefs.remove(_voiceMemoKey);
+        } else {
+          final voiceMemoJson = json.encode(voiceMemoMap);
+          await _prefs.setString(_voiceMemoKey, voiceMemoJson);
+        }
+      }
 
       notifyListeners();
     } catch (e) {
+      debugPrint('음성 메모 추가 실패: $e');
       // 음성 메모 추가 실패 시 무시
     }
   }
@@ -515,7 +537,14 @@ class GalleryModel extends ChangeNotifier {
         size: _pageSize,
       );
 
+      if (morePhotos.isEmpty) {
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
       final Set<String> loadedIds = _photos.map((p) => p.id).toSet();
+      bool hasNewPhotos = false;
 
       for (final asset in morePhotos) {
         if (loadedIds.contains(asset.id)) continue;
@@ -530,13 +559,16 @@ class GalleryModel extends ChangeNotifier {
             asset: asset,
           );
           _photos.add(photo);
+          hasNewPhotos = true;
         }
       }
 
-      _currentPage++;
-      await _savePhotos();
+      if (hasNewPhotos) {
+        _currentPage++;
+        await _savePhotos();
+      }
     } catch (e) {
-      // 추가 사진 로드 실패 시 무시
+      print('추가 사진 로드 중 오류 발생: $e');
     } finally {
       _isLoading = false;
       notifyListeners();

@@ -5,6 +5,8 @@ import 'package:gallery/model/gallery_model.dart';
 import 'package:gallery/model/photo_model.dart';
 import 'package:provider/provider.dart';
 import 'package:gallery/widget/photo_grid_item.dart';
+import 'package:gallery/screen/photo_view_screen.dart';
+import 'package:flutter/rendering.dart';
 
 class AlbumScreen extends StatefulWidget {
   final String albumId;
@@ -32,7 +34,15 @@ class _AlbumScreenState extends State<AlbumScreen> {
         final oldestKey = _imageCache.keys.first;
         _imageCache.remove(oldestKey);
       }
-      _imageCache[path] = FileImage(File(path));
+
+      final file = File(path);
+      final imageProvider = ResizeImage(
+        FileImage(file),
+        width: 300,
+        allowUpscaling: false,
+        policy: ResizeImagePolicy.fit,
+      );
+      _imageCache[path] = imageProvider;
     }
     return _imageCache[path]!;
   }
@@ -154,10 +164,16 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 photo: photo,
                 imageProvider: _getImageProvider(photo.path),
                 onTap: () {
-                  Navigator.pushNamed(
+                  Navigator.push(
                     context,
-                    '/photo_view',
-                    arguments: photo.id,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => PhotoViewScreen(
+                            photoId: photo.id,
+                            source: PhotoViewSource.album,
+                            albumId: widget.albumId,
+                          ),
+                    ),
                   );
                 },
               );
