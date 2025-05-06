@@ -440,12 +440,22 @@ class _MemoDialogState extends State<MemoDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              IconButton(
-                icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-                onPressed: _isRecording ? _stopRecording : _startRecording,
-                color: _isRecording ? Colors.red : Colors.white,
-              ),
-              if (!_isRecording && _currentVoiceMemoPath != null) ...[
+              // 1. 음성 녹음 중일 때 : 음성 녹음 중지 버튼.
+              if (_isRecording)
+                IconButton(
+                  icon: const Icon(Icons.stop),
+                  onPressed: _stopRecording,
+                  color: Colors.red,
+                )
+              // 2. 음성 녹음이 없을 때 (그리고 녹음 중이 아닐 때): 음성 녹음 버튼.
+              else if (_currentVoiceMemoPath == null || _currentVoiceMemoPath!.isEmpty)
+                IconButton(
+                  icon: const Icon(Icons.mic),
+                  onPressed: _startRecording,
+                  color: Colors.white,
+                )
+              // 3. 음성 녹음이 있을 때 (그리고 녹음 중이 아닐 때): 재생, 삭제 버튼.
+              else if (_currentVoiceMemoPath != null && _currentVoiceMemoPath!.isNotEmpty) ...[
                 IconButton(
                   icon: Icon(
                     _isPlaying ? Icons.pause : Icons.play_arrow,
@@ -461,7 +471,8 @@ class _MemoDialogState extends State<MemoDialog> {
               ],
             ],
           ),
-          if (_isRecording || (!_isRecording && _currentVoiceMemoPath != null))
+          // 음성 메모 정보 표시는 녹음 중이거나, 음성 메모가 있을 때만
+          if (_isRecording || (_currentVoiceMemoPath != null && _currentVoiceMemoPath!.isNotEmpty))
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
