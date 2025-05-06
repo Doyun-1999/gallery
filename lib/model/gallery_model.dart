@@ -23,12 +23,17 @@ class GalleryModel extends ChangeNotifier {
   bool _isLoading = false;
   int _currentPage = 0;
   static const int _pageSize = 30;
+  int? _totalPhotoCount;
 
   List<Photo> get photos => _photos;
   List<Album> get albums => List.unmodifiable(_albums);
   List<Photo> get favorites => List.unmodifiable(_favorites);
   bool get isLoading => _isLoading;
-  bool get hasMore => _photos.length < (_currentPage + 1) * _pageSize;
+  bool get hasMore {
+    if (_currentPage == -1) return false;
+    if (_totalPhotoCount == null) return true;
+    return _photos.length < _totalPhotoCount!;
+  }
 
   GalleryModel() {
     _initSharedPreferences();
@@ -472,12 +477,24 @@ class GalleryModel extends ChangeNotifier {
         type: RequestType.image,
       );
 
-      if (albums.isEmpty) return;
+      if (albums.isEmpty) {
+        _currentPage = -1;
+        _totalPhotoCount = 0;
+        return;
+      }
+
+      // 전체 사진 개수 가져오기
+      _totalPhotoCount = await albums[0].assetCountAsync;
 
       final List<AssetEntity> initialPhotos = await albums[0].getAssetListPaged(
         page: _currentPage,
         size: _pageSize,
       );
+
+      if (initialPhotos.isEmpty) {
+        _currentPage = -1;
+        return;
+      }
 
       final Map<String, String> memoBackup = {};
       final Map<String, String> voiceMemoBackup = {};
@@ -512,7 +529,9 @@ class GalleryModel extends ChangeNotifier {
       await _savePhotos();
       await _saveMemos();
     } catch (e) {
-      // 디바이스 사진 로드 실패 시 무시
+      print('디바이스 사진 로드 중 오류 발생: $e');
+      _currentPage = -1;
+      _totalPhotoCount = 0;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -520,7 +539,7 @@ class GalleryModel extends ChangeNotifier {
   }
 
   Future<void> loadMorePhotos() async {
-    if (_isLoading) return;
+    if (_isLoading || !hasMore) return;
 
     try {
       _isLoading = true;
@@ -530,7 +549,11 @@ class GalleryModel extends ChangeNotifier {
         type: RequestType.image,
       );
 
-      if (albums.isEmpty) return;
+      if (albums.isEmpty) {
+        _currentPage = -1;
+        _totalPhotoCount = 0;
+        return;
+      }
 
       final List<AssetEntity> morePhotos = await albums[0].getAssetListPaged(
         page: _currentPage,
@@ -538,8 +561,7 @@ class GalleryModel extends ChangeNotifier {
       );
 
       if (morePhotos.isEmpty) {
-        _isLoading = false;
-        notifyListeners();
+        _currentPage = -1;
         return;
       }
 
@@ -566,9 +588,12 @@ class GalleryModel extends ChangeNotifier {
       if (hasNewPhotos) {
         _currentPage++;
         await _savePhotos();
+      } else {
+        _currentPage = -1;
       }
     } catch (e) {
       print('추가 사진 로드 중 오류 발생: $e');
+      _currentPage = -1;
     } finally {
       _isLoading = false;
       notifyListeners();

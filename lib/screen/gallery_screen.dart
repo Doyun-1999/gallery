@@ -98,56 +98,58 @@ class _GalleryScreenState extends State<GalleryScreen> {
           });
         }
 
-        return _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : NotificationListener<ScrollNotification>(
-              onNotification: (ScrollNotification scrollInfo) {
-                if (scrollInfo.metrics.pixels ==
-                    scrollInfo.metrics.maxScrollExtent) {
-                  if (!galleryModel.isLoading && galleryModel.hasMore) {
-                    galleryModel.loadMorePhotos();
-                  }
-                }
-                return true;
-              },
-              child: GridView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(8.0),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 8.0,
-                  mainAxisSpacing: 8.0,
-                ),
-                itemCount: photos.length + (galleryModel.hasMore ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == photos.length) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(),
-                      ),
-                    );
-                  }
-                  final photo = photos[index];
-                  return PhotoGridItem(
-                    photo: photo,
-                    imageProvider: _getImageProvider(photo.path),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (context) => PhotoViewScreen(
-                                photoId: photo.id,
-                                source: PhotoViewSource.gallery,
-                              ),
-                        ),
-                      );
-                    },
+        if (_isLoading && photos.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return NotificationListener<ScrollNotification>(
+          onNotification: (ScrollNotification scrollInfo) {
+            if (scrollInfo.metrics.pixels ==
+                scrollInfo.metrics.maxScrollExtent) {
+              if (!galleryModel.isLoading && galleryModel.hasMore) {
+                galleryModel.loadMorePhotos();
+              }
+            }
+            return true;
+          },
+          child: GridView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(8.0),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8.0,
+              mainAxisSpacing: 8.0,
+            ),
+            itemCount: photos.length + (galleryModel.hasMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == photos.length && galleryModel.hasMore) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+              final photo = photos[index];
+              return PhotoGridItem(
+                photo: photo,
+                imageProvider: _getImageProvider(photo.path),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => PhotoViewScreen(
+                            photoId: photo.id,
+                            source: PhotoViewSource.gallery,
+                          ),
+                    ),
                   );
                 },
-              ),
-            );
+              );
+            },
+          ),
+        );
       },
     );
   }
