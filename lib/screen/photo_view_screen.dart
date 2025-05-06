@@ -14,6 +14,7 @@ import 'package:gallery/widget/memo_dialog.dart';
 import 'package:gallery/widget/album_dialog.dart';
 import 'package:gallery/widget/photo_info_dialog.dart';
 import 'package:gallery/widget/delete_dialog.dart';
+import 'package:flutter/cupertino.dart';
 
 class PhotoViewScreen extends StatefulWidget {
   final String photoId;
@@ -412,40 +413,93 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
   }
 
   void _showDeleteDialog(BuildContext context, Photo photo) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => DeleteDialog(
-            photo: photo,
-            onDelete: () async {
-              try {
-                final galleryModel = Provider.of<GalleryModel>(
-                  context,
-                  listen: false,
-                );
-                await galleryModel.deletePhoto(photo.id);
+    if (photo.voiceMemoPath != null && photo.voiceMemoPath!.isNotEmpty) {
+      showCupertinoDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return CupertinoAlertDialog(
+            title: const Text("음성 메모 삭제 확인"),
+            content: const Text("음성 메모를 삭제하시겠습니까?"),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text("취소"),
+                onPressed: () {
+                  Navigator.of(context).pop(); // 다이얼로그 닫기
+                },
+              ),
+              CupertinoDialogAction(
+                child: const Text("삭제", style: TextStyle(color: Colors.red)),
+                onPressed: () async {
+                  try {
+                    final galleryModel = Provider.of<GalleryModel>(
+                      context,
+                      listen: false,
+                    );
 
-                // 다이얼로그 닫기
-                if (mounted && Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                }
+                    // 음성 메모 삭제
+                    if (photo.voiceMemoPath != null &&
+                        photo.voiceMemoPath!.isNotEmpty) {
+                      File(photo.voiceMemoPath!).delete();
+                      photo.voiceMemoPath = null;
+                    }
 
-                // 사진 보기 화면 닫기
-                if (mounted && Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                }
-              } catch (e) {
-                debugPrint('사진 삭제 중 오류 발생: $e');
-                if (mounted && Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('사진 삭제 중 오류가 발생했습니다.')),
+                    if (mounted && Navigator.canPop(context)) {
+                      Navigator.pop(context); // 다이얼로그 닫기
+                    }
+                    if (mounted && Navigator.canPop(context)) {
+                      Navigator.pop(context); // 사진 보기 화면 닫기
+                    }
+                  } catch (e) {
+                    debugPrint('음성 메모 삭제 중 오류 발생: $e');
+                    if (mounted && Navigator.canPop(context)) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('음성 메모 삭제 중 오류가 발생했습니다.')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder:
+            (context) => DeleteDialog(
+              photo: photo,
+              onDelete: () async {
+                try {
+                  final galleryModel = Provider.of<GalleryModel>(
+                    context,
+                    listen: false,
                   );
+                  await galleryModel.deletePhoto(photo.id);
+
+                  // 다이얼로그 닫기
+                  if (mounted && Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+
+                  // 사진 보기 화면 닫기
+                  if (mounted && Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                } catch (e) {
+                  debugPrint('사진 삭제 중 오류 발생: $e');
+                  if (mounted && Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('사진 삭제 중 오류가 발생했습니다.')),
+                    );
+                  }
                 }
-              }
-            },
-          ),
-    );
+              },
+            ),
+      );
+    }
   }
 
   void _showAddToAlbumDialog(

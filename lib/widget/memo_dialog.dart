@@ -266,19 +266,55 @@ class _MemoDialogState extends State<MemoDialog> {
     }
   }
 
-  void _deleteVoiceMemo() {
+  Future<void> _deleteVoiceMemo() async {
     if (_currentVoiceMemoPath != null) {
       final file = File(_currentVoiceMemoPath!);
-      if (file.existsSync()) {
-        file.deleteSync();
+      if (await file.exists()) {
+        await file.delete();
       }
-      setState(() {
-        _currentVoiceMemoPath = null;
-        _isPlaying = false;
-      });
+      if (mounted) {
+        setState(() {
+          _currentVoiceMemoPath = null;
+          _isPlaying = false;
+        });
+      }
       final galleryModel = Provider.of<GalleryModel>(context, listen: false);
       galleryModel.addVoiceMemo(widget.photo.id, '');
     }
+  }
+
+  Future<void> _showDeleteConfirmationDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // 사용자가 다이얼로그 바깥을 터치해도 닫히지 않음
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('음성 메모 삭제'),
+          content: const SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text('정말로 이 음성 메모를 삭제하시겠습니까?'),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('취소'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('삭제'),
+              onPressed: () {
+                Navigator.of(context).pop(); // 다이얼로그 닫기
+                _deleteVoiceMemo(); // 음성 메모 삭제 함수 호출
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   String _formatDuration(Duration duration) {
@@ -411,7 +447,7 @@ class _MemoDialogState extends State<MemoDialog> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete),
-                  onPressed: _deleteVoiceMemo,
+                  onPressed: _showDeleteConfirmationDialog,
                   color: Colors.red,
                 ),
               ],
