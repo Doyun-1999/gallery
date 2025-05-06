@@ -248,10 +248,22 @@ class _MemoDialogState extends State<MemoDialog> {
 
         await _audioPlayer.stop();
         await _audioPlayer.setFilePath(_currentVoiceMemoPath!);
-        await _audioPlayer.play();
-        setState(() {
-          _isPlaying = true;
+        // `play()` 호출 후 완료될 때까지 기다린 다음 상태 업데이트
+        await _audioPlayer.play().then((_) {
+          if (mounted) {
+            setState(() {
+              _isPlaying = false;
+            });
+            // 재생 완료 후 명시적으로 stop 호출하여 리소스 정리 및 상태 초기화
+            _audioPlayer.stop();
+          }
         });
+        // play()가 호출되면 즉시 _isPlaying을 true로 설정
+        if (mounted) {
+          setState(() {
+            _isPlaying = true;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -291,11 +303,7 @@ class _MemoDialogState extends State<MemoDialog> {
         return AlertDialog(
           title: const Text('음성 메모 삭제'),
           content: const SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                Text('정말로 이 음성 메모를 삭제하시겠습니까?'),
-              ],
-            ),
+            child: ListBody(children: <Widget>[Text('정말로 이 음성 메모를 삭제하시겠습니까?')]),
           ),
           actions: <Widget>[
             TextButton(
