@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:gallery/model/gallery_model.dart';
-import 'package:gallery/model/photo_model.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
+import 'package:gallery_memo/model/photo_model.dart';
 import 'package:provider/provider.dart';
-import 'package:gallery/widget/photo_grid_item.dart';
-import 'package:gallery/screen/photo_view_screen.dart';
+import 'package:gallery_memo/widget/photo_grid_item.dart';
+import 'package:gallery_memo/screen/photo_view_screen.dart';
 import 'package:flutter/rendering.dart';
 
 class AlbumScreen extends StatefulWidget {

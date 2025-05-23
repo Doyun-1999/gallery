@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:gallery/model/gallery_model.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:provider/provider.dart';
 
 class AlbumDialog extends StatelessWidget {

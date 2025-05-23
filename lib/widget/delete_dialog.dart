@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:gallery/model/photo_model.dart';
+import 'package:gallery_memo/model/photo_model.dart';
 
 class DeleteDialog extends StatelessWidget {
   final Photo photo;

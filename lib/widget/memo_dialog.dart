@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:gallery/model/photo_model.dart';
+import 'package:gallery_memo/model/photo_model.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
-import 'package:gallery/model/gallery_model.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
 import 'dart:async';
 
 class MemoDialog extends StatefulWidget {
@@ -448,14 +448,16 @@ class _MemoDialogState extends State<MemoDialog> {
                   color: Colors.red,
                 )
               // 2. 음성 녹음이 없을 때 (그리고 녹음 중이 아닐 때): 음성 녹음 버튼.
-              else if (_currentVoiceMemoPath == null || _currentVoiceMemoPath!.isEmpty)
+              else if (_currentVoiceMemoPath == null ||
+                  _currentVoiceMemoPath!.isEmpty)
                 IconButton(
                   icon: const Icon(Icons.mic),
                   onPressed: _startRecording,
                   color: Colors.white,
                 )
               // 3. 음성 녹음이 있을 때 (그리고 녹음 중이 아닐 때): 재생, 삭제 버튼.
-              else if (_currentVoiceMemoPath != null && _currentVoiceMemoPath!.isNotEmpty) ...[
+              else if (_currentVoiceMemoPath != null &&
+                  _currentVoiceMemoPath!.isNotEmpty) ...[
                 IconButton(
                   icon: Icon(
                     _isPlaying ? Icons.pause : Icons.play_arrow,
@@ -472,7 +474,9 @@ class _MemoDialogState extends State<MemoDialog> {
             ],
           ),
           // 음성 메모 정보 표시는 녹음 중이거나, 음성 메모가 있을 때만
-          if (_isRecording || (_currentVoiceMemoPath != null && _currentVoiceMemoPath!.isNotEmpty))
+          if (_isRecording ||
+              (_currentVoiceMemoPath != null &&
+                  _currentVoiceMemoPath!.isNotEmpty))
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(

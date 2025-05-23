@@ -1,7 +1,7 @@
 // screens/photo_view_screen.dart
 import 'package:flutter/material.dart';
-import 'package:gallery/model/gallery_model.dart';
-import 'package:gallery/model/photo_model.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
+import 'package:gallery_memo/model/photo_model.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:provider/provider.dart';
@@ -10,10 +10,10 @@ import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:async';
-import 'package:gallery/widget/memo_dialog.dart';
-import 'package:gallery/widget/album_dialog.dart';
-import 'package:gallery/widget/photo_info_dialog.dart';
-import 'package:gallery/widget/delete_dialog.dart';
+import 'package:gallery_memo/widget/memo_dialog.dart';
+import 'package:gallery_memo/widget/album_dialog.dart';
+import 'package:gallery_memo/widget/photo_info_dialog.dart';
+import 'package:gallery_memo/widget/delete_dialog.dart';
 import 'package:flutter/cupertino.dart';
 
 class PhotoViewScreen extends StatefulWidget {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:gallery/model/gallery_model.dart';
-import 'package:gallery/screen/home_screen.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
+import 'package:gallery_memo/screen/home_screen.dart';
 import 'package:provider/provider.dart';
 
 void main() {
@@ -18,6 +18,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Photo Gallery App',
       theme: ThemeData(
         primarySwatch: Colors.blue,

@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:gallery/model/album_model.dart';
-import 'package:gallery/model/photo_model.dart';
+import 'package:gallery_memo/model/album_model.dart';
+import 'package:gallery_memo/model/photo_model.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';

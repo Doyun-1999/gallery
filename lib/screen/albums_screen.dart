@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:gallery/model/gallery_model.dart';
-import 'package:gallery/screen/album_screen.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
+import 'package:gallery_memo/screen/album_screen.dart';
 import 'package:provider/provider.dart';
 
 class AlbumsScreen extends StatefulWidget {

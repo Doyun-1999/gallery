@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:gallery/model/gallery_model.dart';
-import 'package:gallery/screen/albums_screen.dart';
-import 'package:gallery/screen/favorite_screen.dart';
-import 'package:gallery/screen/gallery_screen.dart';
-import 'package:gallery/utils/permission_manager.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
+import 'package:gallery_memo/screen/albums_screen.dart';
+import 'package:gallery_memo/screen/favorite_screen.dart';
+import 'package:gallery_memo/screen/gallery_screen.dart';
+import 'package:gallery_memo/utils/permission_manager.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
