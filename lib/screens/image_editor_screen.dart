@@ -6,6 +6,7 @@ import 'package:image_editor/image_editor.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:flutter/rendering.dart';
 
 class ImageEditorScreen extends StatefulWidget {
   final String imagePath;
@@ -28,20 +29,26 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   Uint8List? _editedImageData;
   Size? _imageSize;
   final GlobalKey _imageKey = GlobalKey();
+  final GlobalKey _captureKey = GlobalKey();
+  ui.Image? _currentImage;
 
   @override
   void initState() {
     super.initState();
     _imageFile = File(widget.imagePath);
     _editedImageData = _imageFile.readAsBytesSync();
-    _loadImageSize();
+    _loadImage();
   }
 
-  Future<void> _loadImageSize() async {
-    ui.decodeImageFromList(_editedImageData!, (ui.Image image) {
-      setState(() {
-        _imageSize = Size(image.width.toDouble(), image.height.toDouble());
-      });
+  Future<void> _loadImage() async {
+    final codec = await ui.instantiateImageCodec(_editedImageData!);
+    final frame = await codec.getNextFrame();
+    setState(() {
+      _currentImage = frame.image;
+      _imageSize = Size(
+        frame.image.width.toDouble(),
+        frame.image.height.toDouble(),
+      );
     });
   }
 
@@ -51,12 +58,29 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         throw Exception('편집된 이미지 데이터가 없습니다.');
       }
 
+      // 화면 캡처
+      final boundary =
+          _captureKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) {
+        throw Exception('화면을 캡처할 수 없습니다.');
+      }
+
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception('이미지 변환에 실패했습니다.');
+      }
+      final capturedData = byteData.buffer.asUint8List();
+
       if (overwrite) {
         // 덮어쓰기
-        await _imageFile.writeAsBytes(_editedImageData!);
+        await _imageFile.writeAsBytes(capturedData);
         setState(() {
           _imageFile = File(_imageFile.path);
+          _editedImageData = capturedData;
         });
+        await _loadImage(); // 이미지 다시 로드
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('이미지가 저장되었습니다.')));
@@ -66,7 +90,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           try {
             // iOS에서는 갤러리에 직접 저장
             final result = await ImageGallerySaver.saveImage(
-              _editedImageData!,
+              capturedData,
               quality: 100,
               name:
                   'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}',
@@ -88,7 +112,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                 'edited_${timestamp}_${path.basename(widget.imagePath)}';
             final newPath = path.join(directory.path, fileName);
             final newFile = File(newPath);
-            await newFile.writeAsBytes(_editedImageData!);
+            await newFile.writeAsBytes(capturedData);
 
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('앱 디렉토리에 저장되었습니다: $fileName')),
@@ -97,7 +121,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         } else {
           // Android에서는 갤러리에 저장
           final result = await ImageGallerySaver.saveImage(
-            _editedImageData!,
+            capturedData,
             quality: 100,
             name:
                 'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}',
@@ -187,7 +211,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           _cropStart = null;
           _cropEnd = null;
         });
-        _loadImageSize(); // 이미지 크기 다시 로드
+        _loadImage(); // 이미지 크기 다시 로드
       }
     } catch (e) {
       ScaffoldMessenger.of(
@@ -290,67 +314,70 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           IconButton(icon: const Icon(Icons.save), onPressed: _showSaveDialog),
         ],
       ),
-      body: GestureDetector(
-        onPanStart:
-            _isCropping
-                ? (details) {
-                  setState(() {
-                    _cropStart = details.localPosition;
-                    _cropEnd = details.localPosition;
-                  });
-                }
-                : null,
-        onPanUpdate:
-            _isCropping
-                ? (details) {
-                  setState(() {
-                    _cropEnd = details.localPosition;
-                  });
-                }
-                : _isDrawing
-                ? (details) {
-                  setState(() {
-                    _drawingPoints.add(details.localPosition);
-                  });
-                }
-                : null,
-        onPanEnd:
-            _isCropping
-                ? null
-                : _isDrawing
-                ? (details) {
-                  setState(() {
-                    _drawingPoints.add(Offset.infinite);
-                  });
-                }
-                : null,
-        child: Stack(
-          children: [
-            Center(
-              child:
-                  _editedImageData != null
-                      ? Image.memory(
-                        _editedImageData!,
-                        fit: BoxFit.contain,
-                        key: _imageKey,
-                      )
-                      : Image.file(
-                        _imageFile,
-                        fit: BoxFit.contain,
-                        key: _imageKey,
-                      ),
-            ),
-            if (_isDrawing)
-              CustomPaint(
-                painter: DrawingPainter(_drawingPoints),
-                size: Size.infinite,
+      body: RepaintBoundary(
+        key: _captureKey,
+        child: GestureDetector(
+          onPanStart:
+              _isCropping
+                  ? (details) {
+                    setState(() {
+                      _cropStart = details.localPosition;
+                      _cropEnd = details.localPosition;
+                    });
+                  }
+                  : null,
+          onPanUpdate:
+              _isCropping
+                  ? (details) {
+                    setState(() {
+                      _cropEnd = details.localPosition;
+                    });
+                  }
+                  : _isDrawing
+                  ? (details) {
+                    setState(() {
+                      _drawingPoints.add(details.localPosition);
+                    });
+                  }
+                  : null,
+          onPanEnd:
+              _isCropping
+                  ? null
+                  : _isDrawing
+                  ? (details) {
+                    setState(() {
+                      _drawingPoints.add(Offset.infinite);
+                    });
+                  }
+                  : null,
+          child: Stack(
+            children: [
+              Center(
+                child:
+                    _editedImageData != null
+                        ? Image.memory(
+                          _editedImageData!,
+                          fit: BoxFit.contain,
+                          key: _imageKey,
+                        )
+                        : Image.file(
+                          _imageFile,
+                          fit: BoxFit.contain,
+                          key: _imageKey,
+                        ),
               ),
-            if (_isCropping && _cropStart != null && _cropEnd != null)
-              CustomPaint(
-                painter: CropPainter(_cropStart!, _cropEnd!),
-                size: Size.infinite,
-              ),
-          ],
+              if (_isDrawing)
+                CustomPaint(
+                  painter: DrawingPainter(_drawingPoints),
+                  size: Size.infinite,
+                ),
+              if (_isCropping && _cropStart != null && _cropEnd != null)
+                CustomPaint(
+                  painter: CropPainter(_cropStart!, _cropEnd!),
+                  size: Size.infinite,
+                ),
+            ],
+          ),
         ),
       ),
     );
