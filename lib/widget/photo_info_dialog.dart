@@ -15,7 +15,7 @@ class PhotoInfoDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '사진 정보',
+            '파일 정보',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
           ),
           const SizedBox(height: 16),
@@ -26,6 +26,8 @@ class PhotoInfoDialog extends StatelessWidget {
           Text('추가 날짜: ${_formatDate(photo.date)}'),
           const SizedBox(height: 8),
           Text('즐겨찾기 상태: ${photo.isFavorite ? "예" : "아니오"}'),
+          const SizedBox(height: 8),
+          Text('파일 유형: ${photo.isVideo ? "영상" : "사진"}'),
         ],
       ),
     );

@@ -15,6 +15,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:gallery_memo/widget/photo_control_button.dart';
 import 'package:gallery_memo/widget/photo_memo_display.dart';
 import 'package:gallery_memo/widget/album_dialogs.dart';
+import 'package:video_player/video_player.dart';
 
 class PhotoViewScreen extends StatefulWidget {
   final String photoId;
@@ -41,6 +42,8 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
   bool _showControls = true;
   late AnimationController _animationController;
   String? _currentMemo;
+  VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
 
   @override
   void initState() {
@@ -70,7 +73,28 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
   void dispose() {
     _animationController.dispose();
     _pageController.dispose();
+    _videoController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeVideo(String path) async {
+    if (_videoController != null) {
+      await _videoController!.dispose();
+    }
+
+    _videoController = VideoPlayerController.file(File(path));
+    try {
+      await _videoController!.initialize();
+      setState(() {
+        _isVideoInitialized = true;
+      });
+      _videoController!.play();
+    } catch (e) {
+      debugPrint('비디오 초기화 중 오류 발생: $e');
+      setState(() {
+        _isVideoInitialized = false;
+      });
+    }
   }
 
   @override
@@ -128,6 +152,16 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
     setState(() {
       _currentMemo = photo.memo;
     });
+
+    if (photo.isVideo) {
+      await _initializeVideo(photo.path);
+    } else {
+      _videoController?.dispose();
+      _videoController = null;
+      setState(() {
+        _isVideoInitialized = false;
+      });
+    }
   }
 
   void _showMemoDialog(Photo photo) {
@@ -223,34 +257,113 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                     _showControls = !_showControls;
                   });
                 },
-                child: PhotoViewGallery.builder(
-                  scrollPhysics: const BouncingScrollPhysics(),
-                  builder: (BuildContext context, int index) {
-                    final photo = photoList[index];
-                    return PhotoViewGalleryPageOptions(
-                      imageProvider: FileImage(File(photo.path)),
-                      initialScale: PhotoViewComputedScale.contained,
-                      minScale: PhotoViewComputedScale.contained,
-                      maxScale: PhotoViewComputedScale.covered * 2,
-                      onScaleEnd: (context, details, controllerValue) {
-                        setState(() {});
-                      },
-                    );
-                  },
-                  itemCount: photoList.length,
-                  loadingBuilder:
-                      (context, event) =>
-                          const Center(child: CircularProgressIndicator()),
-                  pageController: _pageController,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentPhotoId = photoList[index].id;
-                    });
-                    _loadMemoData();
-                  },
-                ),
+                child:
+                    currentPhoto.isVideo && _isVideoInitialized
+                        ? Center(
+                          child: AspectRatio(
+                            aspectRatio: _videoController!.value.aspectRatio,
+                            child: VideoPlayer(_videoController!),
+                          ),
+                        )
+                        : PhotoViewGallery.builder(
+                          scrollPhysics: const BouncingScrollPhysics(),
+                          builder: (BuildContext context, int index) {
+                            final photo = photoList[index];
+                            return PhotoViewGalleryPageOptions(
+                              imageProvider: FileImage(File(photo.path)),
+                              initialScale: PhotoViewComputedScale.contained,
+                              minScale: PhotoViewComputedScale.contained,
+                              maxScale: PhotoViewComputedScale.covered * 2,
+                              onScaleEnd: (context, details, controllerValue) {
+                                setState(() {});
+                              },
+                            );
+                          },
+                          itemCount: photoList.length,
+                          loadingBuilder:
+                              (context, event) => const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                          pageController: _pageController,
+                          onPageChanged: (index) {
+                            setState(() {
+                              _currentPhotoId = photoList[index].id;
+                            });
+                            _loadMemoData();
+                          },
+                        ),
               ),
-              if (_showControls)
+              if (_showControls && currentPhoto.isVideo && _isVideoInitialized)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Color.alphaBlend(
+                            Colors.black.withAlpha(204),
+                            Colors.transparent,
+                          ),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            _videoController!.value.isPlaying
+                                ? Icons.pause
+                                : Icons.play_arrow,
+                            color: Colors.white,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              if (_videoController!.value.isPlaying) {
+                                _videoController!.pause();
+                              } else {
+                                _videoController!.play();
+                              }
+                            });
+                          },
+                        ),
+                        ValueListenableBuilder(
+                          valueListenable: _videoController!,
+                          builder: (context, VideoPlayerValue value, child) {
+                            return Expanded(
+                              child: Slider(
+                                value: value.position.inMilliseconds.toDouble(),
+                                min: 0,
+                                max: value.duration.inMilliseconds.toDouble(),
+                                onChanged: (newValue) {
+                                  _videoController!.seekTo(
+                                    Duration(milliseconds: newValue.toInt()),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                        ValueListenableBuilder(
+                          valueListenable: _videoController!,
+                          builder: (context, VideoPlayerValue value, child) {
+                            return Text(
+                              '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
+                              style: const TextStyle(color: Colors.white),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_showControls && !currentPhoto.isVideo)
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -313,6 +426,16 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
         );
       },
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(duration.inHours);
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return duration.inHours > 0
+        ? '$hours:$minutes:$seconds'
+        : '$minutes:$seconds';
   }
 
   void _showDeleteDialog(BuildContext context, Photo photo) {

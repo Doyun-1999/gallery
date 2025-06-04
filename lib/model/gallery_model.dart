@@ -474,7 +474,7 @@ class GalleryModel extends ChangeNotifier {
       notifyListeners();
 
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
-        type: RequestType.image,
+        type: RequestType.all,
       );
 
       if (albums.isEmpty) {
@@ -519,6 +519,7 @@ class GalleryModel extends ChangeNotifier {
             memo: memoBackup[asset.id],
             voiceMemoPath: voiceMemoBackup[asset.id],
             asset: asset,
+            isVideo: asset.type == AssetType.video,
           );
           newPhotos.add(photo);
         }
@@ -546,7 +547,7 @@ class GalleryModel extends ChangeNotifier {
       notifyListeners();
 
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
-        type: RequestType.image,
+        type: RequestType.all,
       );
 
       if (albums.isEmpty) {
@@ -579,6 +580,7 @@ class GalleryModel extends ChangeNotifier {
             date: asset.createDateTime,
             isFavorite: false,
             asset: asset,
+            isVideo: asset.type == AssetType.video,
           );
           _photos.add(photo);
           hasNewPhotos = true;

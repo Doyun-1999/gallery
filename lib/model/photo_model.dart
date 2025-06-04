@@ -10,6 +10,7 @@ class Photo {
   String? voiceMemoPath;
   DateTime? memoDate;
   final AssetEntity? asset;
+  final bool isVideo;
 
   Photo({
     required this.id,
@@ -21,6 +22,7 @@ class Photo {
     this.voiceMemoPath,
     this.memoDate,
     this.asset,
+    this.isVideo = false,
   });
 
   Photo copyWith({
@@ -33,6 +35,7 @@ class Photo {
     String? voiceMemoPath,
     DateTime? memoDate,
     AssetEntity? asset,
+    bool? isVideo,
   }) {
     return Photo(
       id: id ?? this.id,
@@ -44,6 +47,7 @@ class Photo {
       voiceMemoPath: voiceMemoPath ?? this.voiceMemoPath,
       memoDate: memoDate ?? this.memoDate,
       asset: asset ?? this.asset,
+      isVideo: isVideo ?? this.isVideo,
     );
   }
 
@@ -57,6 +61,7 @@ class Photo {
       'memo': memo,
       'voiceMemoPath': voiceMemoPath,
       'memoDate': memoDate?.toIso8601String(),
+      'isVideo': isVideo,
     };
   }
 
@@ -72,6 +77,7 @@ class Photo {
       memoDate:
           json['memoDate'] != null ? DateTime.parse(json['memoDate']) : null,
       asset: json['asset'],
+      isVideo: json['isVideo'] ?? false,
     );
   }
 }
