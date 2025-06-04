@@ -24,7 +24,6 @@ class GalleryModel extends ChangeNotifier {
   int _currentPage = 0;
   static const int _pageSize = 30;
   int? _totalPhotoCount;
-  final bool _hasMore = true;
 
   // 기기 앨범 캐시
   List<AssetPathEntity>? _cachedDeviceAlbums;

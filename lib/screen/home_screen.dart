@@ -344,12 +344,6 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _clearSelection() {
-    setState(() {
-      _selectedPhotoIds.clear();
-    });
-  }
-
   // 선택된 사진 삭제 (GalleryModel 연동)
   Future<void> _deleteSelectedPhotos(BuildContext context) async {
     final galleryModel = Provider.of<GalleryModel>(context, listen: false);
@@ -374,7 +368,6 @@ class HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {
-        final textController = TextEditingController();
         return Container(
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
