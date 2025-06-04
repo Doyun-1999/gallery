@@ -185,20 +185,20 @@ class HomeScreenState extends State<HomeScreen> {
         actions: [
           if (_selectedIndex == 0 && _isSelectMode) ...[
             IconButton(
-              icon: const Icon(Icons.favorite_border),
-              tooltip: '즐겨찾기',
-              onPressed:
-                  _selectedPhotoIds.isEmpty
-                      ? null
-                      : () => _toggleSelectedPhotosFavorite(context),
-            ),
-            IconButton(
               icon: const Icon(Icons.delete),
               tooltip: '삭제',
               onPressed:
                   _selectedPhotoIds.isEmpty
                       ? null
                       : () => _deleteSelectedPhotos(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.favorite_border),
+              tooltip: '즐겨찾기',
+              onPressed:
+                  _selectedPhotoIds.isEmpty
+                      ? null
+                      : () => _toggleSelectedPhotosFavorite(context),
             ),
             IconButton(
               icon: const Icon(Icons.playlist_add),
