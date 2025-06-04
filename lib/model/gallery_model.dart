@@ -26,6 +26,12 @@ class GalleryModel extends ChangeNotifier {
   int? _totalPhotoCount;
   final bool _hasMore = true;
 
+  // 기기 앨범 캐시
+  List<AssetPathEntity>? _cachedDeviceAlbums;
+  final Map<String, Photo?> _cachedThumbnails = {};
+  DateTime? _lastDeviceAlbumsLoadTime;
+  static const Duration _cacheDuration = Duration(minutes: 5);
+
   List<Photo> get photos => _photos;
   List<Album> get albums => List.unmodifiable(_albums);
   List<Photo> get favorites => List.unmodifiable(_favorites);
@@ -653,15 +659,29 @@ class GalleryModel extends ChangeNotifier {
   // 기기 앨범 목록을 가져오는 메서드
   Future<List<AssetPathEntity>> getDeviceAlbums() async {
     try {
+      // 캐시된 데이터가 있고 유효한 경우 캐시된 데이터 반환
+      if (_cachedDeviceAlbums != null && _lastDeviceAlbumsLoadTime != null) {
+        final now = DateTime.now();
+        if (now.difference(_lastDeviceAlbumsLoadTime!) < _cacheDuration) {
+          debugPrint('캐시된 기기 앨범 목록 사용');
+          return _cachedDeviceAlbums!;
+        }
+      }
+
       debugPrint('PhotoManager.getAssetPathList 호출 시작...');
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
         type: RequestType.all,
       );
       debugPrint('PhotoManager.getAssetPathList 결과: ${albums.length}개의 앨범');
+
+      // 캐시 업데이트
+      _cachedDeviceAlbums = albums;
+      _lastDeviceAlbumsLoadTime = DateTime.now();
+
       return albums;
     } catch (e) {
       debugPrint('기기 앨범 로드 중 오류 발생: $e');
-      return [];
+      return _cachedDeviceAlbums ?? [];
     }
   }
 
@@ -692,5 +712,50 @@ class GalleryModel extends ChangeNotifier {
       debugPrint('기기 앨범 사진 로드 중 오류 발생: $e');
       return [];
     }
+  }
+
+  // 앨범 썸네일을 위한 첫 번째 사진만 가져오는 메서드
+  Future<Photo?> getDeviceAlbumThumbnail(AssetPathEntity album) async {
+    try {
+      // 캐시된 썸네일이 있는 경우 캐시된 데이터 반환
+      if (_cachedThumbnails.containsKey(album.id)) {
+        debugPrint('캐시된 썸네일 사용: ${album.name}');
+        return _cachedThumbnails[album.id];
+      }
+
+      final List<AssetEntity> assets = await album.getAssetListPaged(
+        page: 0,
+        size: 1, // 첫 번째 사진만 가져옴
+      );
+
+      if (assets.isEmpty) return null;
+
+      final asset = assets.first;
+      final file = await asset.file;
+      if (file == null) return null;
+
+      final photo = Photo(
+        id: asset.id,
+        path: file.path,
+        date: asset.createDateTime,
+        asset: asset,
+        isVideo: asset.type == AssetType.video,
+      );
+
+      // 썸네일 캐시에 저장
+      _cachedThumbnails[album.id] = photo;
+
+      return photo;
+    } catch (e) {
+      debugPrint('앨범 썸네일 로드 중 오류 발생: $e');
+      return null;
+    }
+  }
+
+  // 캐시 초기화
+  void clearDeviceAlbumsCache() {
+    _cachedDeviceAlbums = null;
+    _cachedThumbnails.clear();
+    _lastDeviceAlbumsLoadTime = null;
   }
 }

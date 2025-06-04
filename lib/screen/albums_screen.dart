@@ -15,11 +15,17 @@ class AlbumsScreen extends StatefulWidget {
   State<AlbumsScreen> createState() => _AlbumsScreenState();
 }
 
-class _AlbumsScreenState extends State<AlbumsScreen> {
+class _AlbumsScreenState extends State<AlbumsScreen>
+    with AutomaticKeepAliveClientMixin {
   final Map<String, ImageProvider> _imageCache = {};
   static const int _maxCacheSize = 50;
   List<AssetPathEntity> _deviceAlbums = [];
+  final Map<String, Photo?> _albumThumbnails = {};
   bool _isLoading = false;
+  bool _isInitialized = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -28,6 +34,8 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
   }
 
   Future<void> _loadDeviceAlbums() async {
+    if (_isInitialized) return;
+
     setState(() {
       _isLoading = true;
     });
@@ -37,9 +45,15 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
       debugPrint('기기 앨범 로딩 시작...');
       _deviceAlbums = await galleryModel.getDeviceAlbums();
       debugPrint('로드된 기기 앨범 수: ${_deviceAlbums.length}');
+
+      // 각 앨범의 썸네일 로드
       for (var album in _deviceAlbums) {
-        debugPrint('앨범 이름: ${album.name}, 사진 수: ${album.assetCountAsync}');
+        final thumbnail = await galleryModel.getDeviceAlbumThumbnail(album);
+        _albumThumbnails[album.id] = thumbnail;
+        if (mounted) setState(() {});
       }
+
+      _isInitialized = true;
     } catch (e) {
       debugPrint('기기 앨범 로딩 중 오류 발생: $e');
       if (mounted) {
@@ -179,90 +193,77 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                                     itemCount: _deviceAlbums.length,
                                     itemBuilder: (context, index) {
                                       final deviceAlbum = _deviceAlbums[index];
-                                      return FutureBuilder<List<Photo>>(
-                                        future: galleryModel
-                                            .getDeviceAlbumPhotos(deviceAlbum),
-                                        builder: (context, snapshot) {
-                                          if (snapshot.connectionState ==
-                                              ConnectionState.waiting) {
-                                            return const ListTile(
-                                              leading: SizedBox(
-                                                width: 50,
-                                                height: 50,
-                                                child: Center(
-                                                  child:
-                                                      CircularProgressIndicator(),
-                                                ),
-                                              ),
-                                              title: Text('로딩 중...'),
-                                            );
-                                          }
+                                      final thumbnail =
+                                          _albumThumbnails[deviceAlbum.id];
+                                      final assetCount =
+                                          deviceAlbum.assetCountAsync;
 
-                                          final photos = snapshot.data ?? [];
-                                          return ListTile(
-                                            leading:
-                                                photos.isNotEmpty
-                                                    ? SizedBox(
+                                      return ListTile(
+                                        leading:
+                                            thumbnail != null
+                                                ? SizedBox(
+                                                  width: 50,
+                                                  height: 50,
+                                                  child: ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          4,
+                                                        ),
+                                                    child: Image(
+                                                      image: _getImageProvider(
+                                                        thumbnail.path,
+                                                      ),
+                                                      fit: BoxFit.cover,
                                                       width: 50,
                                                       height: 50,
-                                                      child: ClipRRect(
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              4,
-                                                            ),
-                                                        child: Image(
-                                                          image:
-                                                              _getImageProvider(
-                                                                photos
-                                                                    .first
-                                                                    .path,
-                                                              ),
-                                                          fit: BoxFit.cover,
+                                                      errorBuilder: (
+                                                        context,
+                                                        error,
+                                                        stackTrace,
+                                                      ) {
+                                                        return Container(
                                                           width: 50,
                                                           height: 50,
-                                                          errorBuilder: (
-                                                            context,
-                                                            error,
-                                                            stackTrace,
-                                                          ) {
-                                                            return Container(
-                                                              width: 50,
-                                                              height: 50,
-                                                              color:
-                                                                  Colors.grey,
-                                                              child: const Icon(
-                                                                Icons
-                                                                    .photo_album,
-                                                              ),
-                                                            );
-                                                          },
-                                                        ),
-                                                      ),
-                                                    )
-                                                    : Container(
-                                                      width: 50,
-                                                      height: 50,
-                                                      color: Colors.grey,
-                                                      child: const Icon(
-                                                        Icons.photo_album,
-                                                      ),
-                                                    ),
-                                            title: Text(deviceAlbum.name),
-                                            subtitle: Text(
-                                              '${photos.length}개의 사진',
-                                            ),
-                                            onTap: () {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder:
-                                                      (context) =>
-                                                          DeviceAlbumScreen(
-                                                            album: deviceAlbum,
+                                                          color: Colors.grey,
+                                                          child: const Icon(
+                                                            Icons.photo_album,
                                                           ),
+                                                        );
+                                                      },
+                                                    ),
+                                                  ),
+                                                )
+                                                : Container(
+                                                  width: 50,
+                                                  height: 50,
+                                                  color: Colors.grey,
+                                                  child: const Icon(
+                                                    Icons.photo_album,
+                                                  ),
                                                 ),
-                                              );
-                                            },
+                                        title: Text(deviceAlbum.name),
+                                        subtitle: FutureBuilder<int>(
+                                          future: assetCount,
+                                          builder: (context, snapshot) {
+                                            if (snapshot.connectionState ==
+                                                ConnectionState.waiting) {
+                                              return const Text('로딩 중...');
+                                            }
+                                            return Text(
+                                              '${snapshot.data ?? 0}개의 사진',
+                                            );
+                                          },
+                                        ),
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder:
+                                                  (context) =>
+                                                      DeviceAlbumScreen(
+                                                        album: deviceAlbum,
+                                                      ),
+                                            ),
                                           );
                                         },
                                       );
