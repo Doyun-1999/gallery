@@ -449,36 +449,32 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
             actions: [
               CupertinoDialogAction(
                 child: const Text("취소"),
-                onPressed: () {
-                  Navigator.of(context).pop(); // 다이얼로그 닫기
-                },
+                onPressed: () => Navigator.of(context).pop(),
               ),
               CupertinoDialogAction(
                 child: const Text("삭제", style: TextStyle(color: Colors.red)),
                 onPressed: () async {
-                  try {
-                    final galleryModel = Provider.of<GalleryModel>(
-                      context,
-                      listen: false,
-                    );
+                  // 다이얼로그 닫기
+                  Navigator.of(context).pop();
 
-                    // 음성 메모 삭제
+                  try {
+                    // 음성 메모 파일 삭제
                     if (photo.voiceMemoPath != null &&
                         photo.voiceMemoPath!.isNotEmpty) {
-                      File(photo.voiceMemoPath!).delete();
+                      final file = File(photo.voiceMemoPath!);
+                      if (await file.exists()) {
+                        await file.delete();
+                      }
                       photo.voiceMemoPath = null;
                     }
 
-                    if (mounted && Navigator.canPop(context)) {
-                      Navigator.pop(context); // 다이얼로그 닫기
-                    }
-                    if (mounted && Navigator.canPop(context)) {
-                      Navigator.pop(context); // 사진 보기 화면 닫기
+                    // 사진 보기 화면 닫기
+                    if (mounted) {
+                      Navigator.of(context).pop();
                     }
                   } catch (e) {
                     debugPrint('음성 메모 삭제 중 오류 발생: $e');
-                    if (mounted && Navigator.canPop(context)) {
-                      Navigator.pop(context);
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('음성 메모 삭제 중 오류가 발생했습니다.')),
                       );
@@ -497,26 +493,30 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
             (context) => DeleteDialog(
               photo: photo,
               onDelete: () async {
+                // 다이얼로그 닫기
+                Navigator.of(context).pop();
+
                 try {
                   final galleryModel = Provider.of<GalleryModel>(
                     context,
                     listen: false,
                   );
-                  await galleryModel.deletePhoto(photo.id);
 
-                  // 다이얼로그 닫기
-                  if (mounted && Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  }
+                  // 사진 삭제 시도
+                  final success = await galleryModel.deletePhoto(photo.id);
 
-                  // 사진 보기 화면 닫기
-                  if (mounted && Navigator.canPop(context)) {
-                    Navigator.pop(context);
+                  if (success && mounted) {
+                    // 삭제 성공 시 사진 보기 화면 닫기
+                    Navigator.of(context).pop();
+                  } else if (mounted) {
+                    // 삭제 실패 시 에러 메시지 표시
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('사진 삭제에 실패했습니다.')),
+                    );
                   }
                 } catch (e) {
                   debugPrint('사진 삭제 중 오류 발생: $e');
-                  if (mounted && Navigator.canPop(context)) {
-                    Navigator.pop(context);
+                  if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('사진 삭제 중 오류가 발생했습니다.')),
                     );

@@ -275,65 +275,88 @@ class GalleryModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deletePhoto(String photoId) async {
+  Future<bool> deletePhoto(String photoId) async {
     try {
-      final photo = _photos.firstWhere((photo) => photo.id == photoId);
+      final photo = photos.firstWhere((p) => p.id == photoId);
+      debugPrint('사진 삭제 시작: ${photo.path}');
 
-      // 시스템에서 파일 삭제
-      try {
-        if (Platform.isAndroid) {
-          final status = await Permission.storage.status;
-          if (!status.isGranted) {
-            final result = await Permission.storage.request();
-            if (!result.isGranted) {
-              throw Exception('저장소 접근 권한이 필요합니다.');
-            }
-          }
+      // Android 13 이상에서는 photos 권한만 필요
+      if (Platform.isAndroid) {
+        final photosStatus = await Permission.photos.status;
+        debugPrint('사진 권한 상태: $photosStatus');
 
-          // Android MediaStore를 통한 삭제
-          final file = File(photo.path);
-          if (await file.exists()) {
-            if (photo.asset != null) {
-              await PhotoManager.editor.deleteWithIds([photo.asset!.id]);
-            }
-            await file.delete();
-          }
-        } else if (Platform.isIOS) {
-          // iOS의 경우
-          if (photo.asset != null) {
-            await PhotoManager.editor.deleteWithIds([photo.asset!.id]);
-          } else {
-            final file = File(photo.path);
-            if (await file.exists()) {
-              await file.delete();
-            }
+        if (photosStatus.isDenied) {
+          debugPrint('사진 권한 요청');
+          final photosResult = await Permission.photos.request();
+          debugPrint('사진 권한 요청 결과: $photosResult');
+
+          if (photosResult.isDenied) {
+            debugPrint('사진 권한이 거부됨');
+            return false;
           }
         }
-      } catch (e) {
-        debugPrint('시스템 파일 삭제 실패: $e');
-        // 시스템에서 삭제 실패해도 앱 내 데이터는 정리
       }
 
-      // 앨범에서 사진 ID 제거
-      for (var album in _albums) {
+      bool systemDeleteSuccess = false;
+
+      // 1. PhotoManager를 통한 삭제 시도
+      try {
+        debugPrint('PhotoManager를 통한 삭제 시도');
+        if (photo.asset != null) {
+          final List<String> result = await PhotoManager.editor.deleteWithIds([
+            photo.asset!.id,
+          ]);
+          systemDeleteSuccess = result.isNotEmpty;
+          debugPrint('PhotoManager 삭제 결과: $result');
+        }
+      } catch (e) {
+        debugPrint('PhotoManager 삭제 실패: $e');
+      }
+
+      // 2. PhotoManager 삭제가 실패한 경우 파일 시스템 삭제 시도
+      if (!systemDeleteSuccess) {
+        try {
+          debugPrint('파일 시스템 삭제 시도');
+          final file = File(photo.path);
+          if (await file.exists()) {
+            await file.delete();
+            systemDeleteSuccess = true;
+            debugPrint('파일 시스템 삭제 성공');
+          } else {
+            debugPrint('삭제할 파일이 존재하지 않음');
+            systemDeleteSuccess = true; // 파일이 이미 없는 경우는 성공으로 처리
+          }
+        } catch (e) {
+          debugPrint('파일 시스템 삭제 실패: $e');
+        }
+      }
+
+      if (!systemDeleteSuccess) {
+        debugPrint('시스템 삭제 실패');
+        return false;
+      }
+
+      // 3. 앱 내부 데이터 정리
+      debugPrint('앱 내부 데이터 정리 시작');
+      photos.removeWhere((p) => p.id == photoId);
+      debugPrint('사진 목록에서 제거됨');
+
+      // 4. 앨범에서도 제거
+      for (final album in albums) {
         album.photoIds.remove(photoId);
       }
+      debugPrint('앨범에서 제거됨');
 
-      // 사진 목록에서 제거
-      _photos.removeWhere((photo) => photo.id == photoId);
-
-      // 즐겨찾기에서도 제거
-      _favorites.removeWhere((photo) => photo.id == photoId);
-
-      // 데이터 저장
-      await _savePhotos();
-      await _saveAlbums();
-      await _saveFavorites();
+      // 5. 즐겨찾기에서도 제거
+      favorites.removeWhere((p) => p.id == photoId);
+      debugPrint('즐겨찾기에서 제거됨');
 
       notifyListeners();
+      debugPrint('사진 삭제 완료');
+      return true;
     } catch (e) {
       debugPrint('사진 삭제 중 오류 발생: $e');
-      rethrow;
+      return false;
     }
   }
 
