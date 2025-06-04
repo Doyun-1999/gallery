@@ -57,17 +57,23 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
     });
 
     try {
-      final thumbnail = await widget.photo.asset!.thumbnailData;
+      final thumbnail = await widget.photo.asset!.thumbnailDataWithSize(
+        const ThumbnailSize(200, 200),
+        quality: 80,
+      );
       if (thumbnail != null && mounted) {
         setState(() {
           _thumbnailProvider = MemoryImage(thumbnail);
           _isLoadingThumbnail = false;
         });
+      } else {
+        throw Exception('썸네일을 생성할 수 없습니다.');
       }
     } catch (e) {
       debugPrint('동영상 썸네일 로드 중 오류 발생: $e');
       if (mounted) {
         setState(() {
+          _thumbnailProvider = const AssetImage('assets/logo/logo.png');
           _isLoadingThumbnail = false;
         });
       }

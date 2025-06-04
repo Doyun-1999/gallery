@@ -71,29 +71,81 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
 
   @override
   void dispose() {
+    _videoController?.removeListener(() {});
+    _videoController?.pause();
+    _videoController?.dispose();
+    _videoController = null;
     _animationController.dispose();
     _pageController.dispose();
-    _videoController?.dispose();
     super.dispose();
   }
 
   Future<void> _initializeVideo(String path) async {
-    if (_videoController != null) {
-      await _videoController!.dispose();
-    }
-
-    _videoController = VideoPlayerController.file(File(path));
     try {
-      await _videoController!.initialize();
-      setState(() {
-        _isVideoInitialized = true;
-      });
-      _videoController!.play();
+      // 기존 컨트롤러 정리
+      await _videoController?.dispose();
+      _videoController = null;
+
+      // 파일 존재 확인
+      final file = File(path);
+      if (!await file.exists()) {
+        throw Exception('비디오 파일을 찾을 수 없습니다.');
+      }
+
+      // 새 컨트롤러 생성 및 초기화
+      _videoController = VideoPlayerController.file(file);
+
+      // 비디오 초기화 시도
+      await _videoController!.initialize().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('비디오 초기화 시간이 초과되었습니다.');
+        },
+      );
+
+      // 오디오 볼륨 설정
+      await _videoController!.setVolume(1.0);
+
+      if (mounted) {
+        setState(() {
+          _isVideoInitialized = true;
+        });
+
+        // 비디오 재생 시작
+        await _videoController!.play();
+
+        // 재생 상태 모니터링
+        _videoController!.addListener(() {
+          if (_videoController!.value.hasError) {
+            debugPrint(
+              '비디오 재생 중 오류 발생: ${_videoController!.value.errorDescription}',
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '비디오 재생 중 오류가 발생했습니다: ${_videoController!.value.errorDescription}',
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          }
+        });
+      }
     } catch (e) {
       debugPrint('비디오 초기화 중 오류 발생: $e');
-      setState(() {
-        _isVideoInitialized = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('비디오를 재생할 수 없습니다: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        setState(() {
+          _isVideoInitialized = false;
+        });
+      }
     }
   }
 
@@ -258,17 +310,66 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                   });
                 },
                 child:
-                    currentPhoto.isVideo && _isVideoInitialized
-                        ? Center(
-                          child: AspectRatio(
-                            aspectRatio: _videoController!.value.aspectRatio,
-                            child: VideoPlayer(_videoController!),
-                          ),
-                        )
+                    currentPhoto.isVideo
+                        ? _isVideoInitialized
+                            ? Center(
+                              child: AspectRatio(
+                                aspectRatio:
+                                    _videoController!.value.aspectRatio,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    VideoPlayer(_videoController!),
+                                    if (_videoController!.value.hasError)
+                                      Container(
+                                        color: Colors.black54,
+                                        child: const Center(
+                                          child: Text(
+                                            '비디오를 재생할 수 없습니다',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            : const Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    '비디오 로딩 중...',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            )
                         : PhotoViewGallery.builder(
                           scrollPhysics: const BouncingScrollPhysics(),
                           builder: (BuildContext context, int index) {
                             final photo = photoList[index];
+                            if (photo.isVideo) {
+                              return PhotoViewGalleryPageOptions(
+                                imageProvider: const AssetImage(
+                                  'assets/logo/logo.png',
+                                ),
+                                initialScale: PhotoViewComputedScale.contained,
+                                minScale: PhotoViewComputedScale.contained,
+                                maxScale: PhotoViewComputedScale.covered * 2,
+                                onScaleEnd: (
+                                  context,
+                                  details,
+                                  controllerValue,
+                                ) {
+                                  setState(() {});
+                                },
+                              );
+                            }
                             return PhotoViewGalleryPageOptions(
                               imageProvider: FileImage(File(photo.path)),
                               initialScale: PhotoViewComputedScale.contained,
