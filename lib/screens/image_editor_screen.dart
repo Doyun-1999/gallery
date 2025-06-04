@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:image_editor/image_editor.dart';
 import 'package:path/path.dart' as path;
@@ -25,12 +26,23 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   Offset? _cropStart;
   Offset? _cropEnd;
   Uint8List? _editedImageData;
+  Size? _imageSize;
+  final GlobalKey _imageKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _imageFile = File(widget.imagePath);
     _editedImageData = _imageFile.readAsBytesSync();
+    _loadImageSize();
+  }
+
+  Future<void> _loadImageSize() async {
+    ui.decodeImageFromList(_editedImageData!, (ui.Image image) {
+      setState(() {
+        _imageSize = Size(image.width.toDouble(), image.height.toDouble());
+      });
+    });
   }
 
   Future<void> _saveImage(bool overwrite) async {
@@ -124,17 +136,57 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   }
 
   Future<void> _cropImage() async {
-    if (_cropStart == null || _cropEnd == null) return;
+    if (_cropStart == null || _cropEnd == null || _imageSize == null) return;
 
     try {
       final option = ImageEditorOption();
-      final rect = Rect.fromPoints(_cropStart!, _cropEnd!);
+
+      // 화면 좌표를 이미지 좌표로 변환
+      final imageBox =
+          _imageKey.currentContext?.findRenderObject() as RenderBox?;
+      if (imageBox == null) return;
+
+      // 이미지가 화면에 표시된 영역 계산
+      final screenSize = MediaQuery.of(context).size;
+      final imageAspectRatio = _imageSize!.width / _imageSize!.height;
+      final screenAspectRatio = screenSize.width / screenSize.height;
+
+      double displayWidth, displayHeight;
+      if (imageAspectRatio > screenAspectRatio) {
+        displayWidth = screenSize.width;
+        displayHeight = screenSize.width / imageAspectRatio;
+      } else {
+        displayHeight = screenSize.height;
+        displayWidth = screenSize.height * imageAspectRatio;
+      }
+
+      // 이미지가 화면 중앙에 위치하도록 오프셋 계산
+      final offsetX = (screenSize.width - displayWidth) / 2;
+      final offsetY = (screenSize.height - displayHeight) / 2;
+
+      // 크롭 영역을 이미지 좌표로 변환
+      final cropRect = Rect.fromPoints(_cropStart!, _cropEnd!);
+      final normalizedRect = Rect.fromLTWH(
+        (cropRect.left - offsetX) * (_imageSize!.width / displayWidth),
+        (cropRect.top - offsetY) * (_imageSize!.height / displayHeight),
+        cropRect.width * (_imageSize!.width / displayWidth),
+        cropRect.height * (_imageSize!.height / displayHeight),
+      );
+
+      // 이미지 경계를 벗어나지 않도록 조정
+      final adjustedRect = Rect.fromLTWH(
+        normalizedRect.left.clamp(0, _imageSize!.width),
+        normalizedRect.top.clamp(0, _imageSize!.height),
+        normalizedRect.width.clamp(0, _imageSize!.width - normalizedRect.left),
+        normalizedRect.height.clamp(0, _imageSize!.height - normalizedRect.top),
+      );
+
       option.addOption(
         ClipOption(
-          x: rect.left.toInt(),
-          y: rect.top.toInt(),
-          width: rect.width.toInt(),
-          height: rect.height.toInt(),
+          x: adjustedRect.left.toInt(),
+          y: adjustedRect.top.toInt(),
+          width: adjustedRect.width.toInt(),
+          height: adjustedRect.height.toInt(),
         ),
       );
 
@@ -150,12 +202,13 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           _cropStart = null;
           _cropEnd = null;
         });
+        _loadImageSize(); // 이미지 크기 다시 로드
       }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('이미지 자르기 실패: $e')));
-      print('자르기 실패 상세: $e'); // 디버깅을 위한 로그
+      print('자르기 실패 상세: $e');
     }
   }
 
@@ -291,8 +344,16 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
             Center(
               child:
                   _editedImageData != null
-                      ? Image.memory(_editedImageData!, fit: BoxFit.contain)
-                      : Image.file(_imageFile, fit: BoxFit.contain),
+                      ? Image.memory(
+                        _editedImageData!,
+                        fit: BoxFit.contain,
+                        key: _imageKey,
+                      )
+                      : Image.file(
+                        _imageFile,
+                        fit: BoxFit.contain,
+                        key: _imageKey,
+                      ),
             ),
             if (_isDrawing)
               CustomPaint(
