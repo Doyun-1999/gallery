@@ -28,6 +28,7 @@ class PhotoGridItem extends StatefulWidget {
 
 class _PhotoGridItemState extends State<PhotoGridItem> {
   ImageProvider? _thumbnailProvider;
+  bool _isLoadingThumbnail = false;
 
   @override
   void initState() {
@@ -37,18 +38,39 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
     }
   }
 
+  @override
+  void didUpdateWidget(PhotoGridItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.photo.isVideo &&
+        widget.photo.asset != null &&
+        (oldWidget.photo.asset?.id != widget.photo.asset?.id ||
+            _thumbnailProvider == null)) {
+      _loadVideoThumbnail();
+    }
+  }
+
   Future<void> _loadVideoThumbnail() async {
-    if (widget.photo.asset == null) return;
+    if (widget.photo.asset == null || _isLoadingThumbnail) return;
+
+    setState(() {
+      _isLoadingThumbnail = true;
+    });
 
     try {
       final thumbnail = await widget.photo.asset!.thumbnailData;
       if (thumbnail != null && mounted) {
         setState(() {
           _thumbnailProvider = MemoryImage(thumbnail);
+          _isLoadingThumbnail = false;
         });
       }
     } catch (e) {
       debugPrint('동영상 썸네일 로드 중 오류 발생: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingThumbnail = false;
+        });
+      }
     }
   }
 
@@ -79,6 +101,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                   Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
+                      color: Colors.black.withOpacity(0.1),
                       image:
                           widget.photo.isVideo && _thumbnailProvider != null
                               ? DecorationImage(
@@ -93,6 +116,10 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                                 },
                               ),
                     ),
+                    child:
+                        _isLoadingThumbnail
+                            ? const Center(child: CircularProgressIndicator())
+                            : null,
                   ),
                   if (widget.photo.isVideo)
                     Positioned(
