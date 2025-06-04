@@ -53,28 +53,10 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
       if (overwrite) {
         // 덮어쓰기
-        final directory = path.dirname(_imageFile.path);
-        final tempPath = path.join(
-          directory,
-          'temp_${path.basename(_imageFile.path)}',
-        );
-        final tempFile = File(tempPath);
-
-        // 임시 파일에 저장
-        await tempFile.writeAsBytes(_editedImageData!);
-
-        // 원본 파일 삭제
-        if (await _imageFile.exists()) {
-          await _imageFile.delete();
-        }
-
-        // 임시 파일을 원본 파일로 이동
-        await tempFile.rename(_imageFile.path);
-
+        await _imageFile.writeAsBytes(_editedImageData!);
         setState(() {
           _imageFile = File(_imageFile.path);
         });
-
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('이미지가 저장되었습니다.')));
@@ -113,18 +95,21 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
             );
           }
         } else {
-          // Android에서는 앱 디렉토리에 저장
-          final directory = await getApplicationDocumentsDirectory();
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final fileName =
-              'edited_${timestamp}_${path.basename(widget.imagePath)}';
-          final newPath = path.join(directory.path, fileName);
-          final newFile = File(newPath);
-          await newFile.writeAsBytes(_editedImageData!);
+          // Android에서는 갤러리에 저장
+          final result = await ImageGallerySaver.saveImage(
+            _editedImageData!,
+            quality: 100,
+            name:
+                'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}',
+          );
 
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('새 파일로 저장되었습니다: $fileName')));
+          if (result['isSuccess'] == true) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('갤러리에 저장되었습니다.')));
+          } else {
+            throw Exception('갤러리 저장 실패: ${result['errorMessage']}');
+          }
         }
       }
     } catch (e) {
