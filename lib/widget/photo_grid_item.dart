@@ -55,20 +55,26 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              image: DecorationImage(
-                image:
-                    widget.photo.isVideo
-                        ? (_thumbnailProvider ??
-                            const AssetImage('assets/logo/logo.png'))
-                        : widget.imageProvider,
-                fit: BoxFit.cover,
-                onError: (exception, stackTrace) {
-                  debugPrint('이미지 로드 오류: $exception');
-                },
-              ),
+              image:
+                  widget.photo.isVideo && _thumbnailProvider != null
+                      ? DecorationImage(
+                        image: _thumbnailProvider!,
+                        fit: BoxFit.cover,
+                      )
+                      : DecorationImage(
+                        image: widget.imageProvider,
+                        fit: BoxFit.cover,
+                        onError: (exception, stackTrace) {
+                          debugPrint('이미지 로드 오류: $exception');
+                        },
+                      ),
             ),
             child: Stack(
               children: [
+                if (widget.photo.isVideo && _thumbnailProvider == null)
+                  const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
                 // 메모와 음성 메모 아이콘
                 Positioned(
                   bottom: 4,
