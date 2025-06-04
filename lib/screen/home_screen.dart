@@ -3,6 +3,7 @@ import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/screen/albums_screen.dart';
 import 'package:gallery_memo/screen/favorite_screen.dart';
 import 'package:gallery_memo/screen/gallery_screen.dart';
+import 'package:gallery_memo/screen/videos_screen.dart';
 import 'package:gallery_memo/utils/permission_manager.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
@@ -84,6 +85,8 @@ class HomeScreenState extends State<HomeScreen> {
       case 1:
         return const FavoritesScreen();
       case 2:
+        return const VideosScreen();
+      case 3:
         return const AlbumsScreen();
       default:
         return const GalleryScreen();
@@ -173,7 +176,8 @@ class HomeScreenState extends State<HomeScreen> {
               children: [
                 _buildNavItem(0, Icons.photo_library, '갤러리'),
                 _buildNavItem(1, Icons.favorite, '즐겨찾기'),
-                _buildNavItem(2, Icons.album, '앨범'),
+                _buildNavItem(2, Icons.video_library, '동영상'),
+                _buildNavItem(3, Icons.album, '앨범'),
               ],
             ),
           ),

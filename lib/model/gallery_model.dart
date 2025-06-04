@@ -556,6 +556,9 @@ class GalleryModel extends ChangeNotifier {
         return;
       }
 
+      // 전체 사진 개수 가져오기
+      _totalPhotoCount = await albums[0].assetCountAsync;
+
       final List<AssetEntity> morePhotos = await albums[0].getAssetListPaged(
         page: _currentPage,
         size: _pageSize,
@@ -569,6 +572,20 @@ class GalleryModel extends ChangeNotifier {
       final Set<String> loadedIds = _photos.map((p) => p.id).toSet();
       bool hasNewPhotos = false;
 
+      // 기존 사진들의 메모와 즐겨찾기 상태 백업
+      final Map<String, String> memoBackup = {};
+      final Map<String, String> voiceMemoBackup = {};
+      final Map<String, bool> favoriteBackup = {};
+      for (var photo in _photos) {
+        if (photo.memo != null) {
+          memoBackup[photo.id] = photo.memo!;
+        }
+        if (photo.voiceMemoPath != null) {
+          voiceMemoBackup[photo.id] = photo.voiceMemoPath!;
+        }
+        favoriteBackup[photo.id] = photo.isFavorite;
+      }
+
       for (final asset in morePhotos) {
         if (loadedIds.contains(asset.id)) continue;
 
@@ -578,7 +595,9 @@ class GalleryModel extends ChangeNotifier {
             id: asset.id,
             path: file.path,
             date: asset.createDateTime,
-            isFavorite: false,
+            isFavorite: favoriteBackup[asset.id] ?? false,
+            memo: memoBackup[asset.id],
+            voiceMemoPath: voiceMemoBackup[asset.id],
             asset: asset,
             isVideo: asset.type == AssetType.video,
           );
@@ -590,7 +609,9 @@ class GalleryModel extends ChangeNotifier {
       if (hasNewPhotos) {
         _currentPage++;
         await _savePhotos();
+        await _saveMemos();
       } else {
+        // 더 이상 새로운 사진이 없으면 페이지를 -1로 설정
         _currentPage = -1;
       }
     } catch (e) {
