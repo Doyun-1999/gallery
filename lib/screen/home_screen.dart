@@ -249,7 +249,7 @@ class HomeScreenState extends State<HomeScreen> {
                 _buildNavItem(0, Icons.photo_library, '갤러리'),
                 _buildNavItem(1, Icons.video_library, '동영상'),
                 _buildNavItem(2, Icons.favorite, '즐겨찾기'),
-                _buildNavItem(4, Icons.album, '앨범'),
+                _buildNavItem(3, Icons.album, '앨범'),
               ],
             ),
           ),
