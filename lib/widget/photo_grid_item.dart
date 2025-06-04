@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/photo_model.dart';
+import 'package:photo_manager/photo_manager.dart';
 
-class PhotoGridItem extends StatelessWidget {
+class PhotoGridItem extends StatefulWidget {
   final Photo photo;
   final ImageProvider imageProvider;
   final VoidCallback onTap;
@@ -14,17 +15,53 @@ class PhotoGridItem extends StatelessWidget {
   });
 
   @override
+  State<PhotoGridItem> createState() => _PhotoGridItemState();
+}
+
+class _PhotoGridItemState extends State<PhotoGridItem> {
+  ImageProvider? _thumbnailProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.photo.isVideo && widget.photo.asset != null) {
+      _loadVideoThumbnail();
+    }
+  }
+
+  Future<void> _loadVideoThumbnail() async {
+    if (widget.photo.asset == null) return;
+
+    try {
+      final thumbnail = await widget.photo.asset!.thumbnailData;
+      if (thumbnail != null && mounted) {
+        setState(() {
+          _thumbnailProvider = MemoryImage(thumbnail);
+        });
+      }
+    } catch (e) {
+      debugPrint('동영상 썸네일 로드 중 오류 발생: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Hero(
-        tag: 'photo_${photo.id}',
+        tag: 'photo_${widget.photo.id}',
         child: AspectRatio(
           aspectRatio: 1,
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+              image: DecorationImage(
+                image:
+                    widget.photo.isVideo && _thumbnailProvider != null
+                        ? _thumbnailProvider!
+                        : widget.imageProvider,
+                fit: BoxFit.cover,
+              ),
             ),
             child: Stack(
               children: [
@@ -36,7 +73,8 @@ class PhotoGridItem extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // 텍스트 메모 아이콘
-                      if (photo.memo != null && photo.memo!.isNotEmpty)
+                      if (widget.photo.memo != null &&
+                          widget.photo.memo!.isNotEmpty)
                         Container(
                           margin: const EdgeInsets.only(right: 4),
                           padding: const EdgeInsets.all(4),
@@ -51,7 +89,7 @@ class PhotoGridItem extends StatelessWidget {
                           ),
                         ),
                       // 음성 메모 아이콘
-                      if (photo.voiceMemoPath != null)
+                      if (widget.photo.voiceMemoPath != null)
                         Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -67,6 +105,24 @@ class PhotoGridItem extends StatelessWidget {
                     ],
                   ),
                 ),
+                // 동영상 아이콘
+                if (widget.photo.isVideo)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_circle_outline,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
