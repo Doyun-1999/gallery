@@ -24,6 +24,7 @@ class GalleryModel extends ChangeNotifier {
   int _currentPage = 0;
   static const int _pageSize = 30;
   int? _totalPhotoCount;
+  final bool _hasMore = true;
 
   List<Photo> get photos => _photos;
   List<Album> get albums => List.unmodifiable(_albums);
@@ -542,10 +543,10 @@ class GalleryModel extends ChangeNotifier {
   Future<void> loadMorePhotos() async {
     if (_isLoading || !hasMore) return;
 
-    try {
-      _isLoading = true;
-      notifyListeners();
+    _isLoading = true;
+    notifyListeners();
 
+    try {
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
         type: RequestType.all,
       );
@@ -553,19 +554,24 @@ class GalleryModel extends ChangeNotifier {
       if (albums.isEmpty) {
         _currentPage = -1;
         _totalPhotoCount = 0;
+        _isLoading = false;
+        notifyListeners();
         return;
       }
 
       // 전체 사진 개수 가져오기
       _totalPhotoCount = await albums[0].assetCountAsync;
 
+      // 페이지 크기를 늘려서 더 많은 사진을 한 번에 로드
       final List<AssetEntity> morePhotos = await albums[0].getAssetListPaged(
         page: _currentPage,
-        size: _pageSize,
+        size: 100, // 페이지 크기를 100으로 증가
       );
 
       if (morePhotos.isEmpty) {
         _currentPage = -1;
+        _isLoading = false;
+        notifyListeners();
         return;
       }
 
@@ -610,14 +616,27 @@ class GalleryModel extends ChangeNotifier {
         _currentPage++;
         await _savePhotos();
         await _saveMemos();
+
+        // 동영상이 20개 이상 로드되었거나 더 이상 로드할 사진이 없을 때까지 계속 로드
+        final videoCount = _photos.where((photo) => photo.isVideo).length;
+        if (videoCount < 20 && morePhotos.isNotEmpty) {
+          _isLoading = false;
+          notifyListeners();
+          await Future.delayed(const Duration(milliseconds: 100)); // 약간의 지연 추가
+          await loadMorePhotos(); // 재귀적으로 더 로드
+        } else {
+          _isLoading = false;
+          notifyListeners();
+        }
       } else {
         // 더 이상 새로운 사진이 없으면 페이지를 -1로 설정
         _currentPage = -1;
+        _isLoading = false;
+        notifyListeners();
       }
     } catch (e) {
       print('추가 사진 로드 중 오류 발생: $e');
       _currentPage = -1;
-    } finally {
       _isLoading = false;
       notifyListeners();
     }

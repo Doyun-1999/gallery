@@ -15,44 +15,63 @@ class VideosScreen extends StatefulWidget {
 }
 
 class VideosScreenState extends State<VideosScreen> {
-  final ScrollController _scrollController = ScrollController();
   bool _isLoading = true;
-  int _lastPreloadIndex = -1;
   List<Photo> _videos = [];
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    _updateVideos();
+    _loadVideos();
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _updateVideos() {
-    final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+  Future<void> _loadVideos() async {
     setState(() {
-      _videos = galleryModel.photos.where((photo) => photo.isVideo).toList();
-      _isLoading = false;
+      _isLoading = true;
     });
-  }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels ==
-        _scrollController.position.maxScrollExtent) {
-      final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-      if (!galleryModel.isLoading && galleryModel.hasMore) {
+    try {
+      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+        type: RequestType.video,
+      );
+
+      if (albums.isEmpty) {
         setState(() {
-          _isLoading = true;
+          _isLoading = false;
+          _videos = [];
         });
-        galleryModel.loadMorePhotos().then((_) {
-          _updateVideos();
-        });
+        return;
       }
+
+      final List<AssetEntity> videoAssets = await albums[0].getAssetListPaged(
+        page: 0,
+        size: 1000,
+      );
+
+      final List<Photo> videos = [];
+      for (final asset in videoAssets) {
+        final file = await asset.file;
+        if (file != null) {
+          final photo = Photo(
+            id: asset.id,
+            path: file.path,
+            date: asset.createDateTime,
+            asset: asset,
+            isVideo: true,
+          );
+          videos.add(photo);
+        }
+      }
+
+      setState(() {
+        _videos = videos;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('비디오 로드 중 오류 발생: $e');
+      setState(() {
+        _isLoading = false;
+        _videos = [];
+      });
     }
   }
 
@@ -66,115 +85,59 @@ class VideosScreenState extends State<VideosScreen> {
     return FileImage(File(photo.path));
   }
 
-  void _preloadImages(List<Photo> photos, Range range) {
-    if (photos.isEmpty) return;
-
-    final startIndex = range.start;
-    final endIndex = range.end;
-
-    if (startIndex > _lastPreloadIndex || endIndex < _lastPreloadIndex - 12) {
-      for (int i = startIndex; i < endIndex; i++) {
-        if (i < photos.length) {
-          _getVideoThumbnail(photos[i]);
-        }
-      }
-      _lastPreloadIndex = startIndex;
-    }
-  }
-
-  Range _getVisibleRange() {
-    final firstVisibleItem = (_scrollController.position.pixels / 300).floor();
-    final lastVisibleItem = firstVisibleItem + 12;
-    return Range(firstVisibleItem, lastVisibleItem);
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Consumer<GalleryModel>(
-      builder: (context, galleryModel, child) {
-        if (_isLoading && _videos.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        if (_videos.isEmpty) {
-          return const Center(
-            child: Text('동영상이 없습니다', style: TextStyle(fontSize: 16)),
-          );
-        }
+    if (_videos.isEmpty) {
+      return const Center(
+        child: Text('동영상이 없습니다', style: TextStyle(fontSize: 16)),
+      );
+    }
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _preloadImages(_videos, _getVisibleRange());
-        });
+    return GridView.builder(
+      padding: const EdgeInsets.all(8.0),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 8.0,
+        mainAxisSpacing: 8.0,
+      ),
+      itemCount: _videos.length,
+      itemBuilder: (context, index) {
+        final video = _videos[index];
+        return FutureBuilder<ImageProvider>(
+          future: _getVideoThumbnail(video),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              return PhotoGridItem(
+                photo: video,
+                imageProvider: snapshot.data!,
+                onTap: () {
+                  final galleryModel = Provider.of<GalleryModel>(
+                    context,
+                    listen: false,
+                  );
+                  galleryModel.photos.addAll(_videos);
 
-        return NotificationListener<ScrollNotification>(
-          onNotification: (ScrollNotification scrollInfo) {
-            if (scrollInfo.metrics.pixels ==
-                scrollInfo.metrics.maxScrollExtent) {
-              if (!galleryModel.isLoading && galleryModel.hasMore) {
-                setState(() {
-                  _isLoading = true;
-                });
-                galleryModel.loadMorePhotos().then((_) {
-                  _updateVideos();
-                });
-              }
-            }
-            return true;
-          },
-          child: GridView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(8.0),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 8.0,
-              mainAxisSpacing: 8.0,
-            ),
-            itemCount: _videos.length + (galleryModel.hasMore ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index == _videos.length && galleryModel.hasMore) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-              final video = _videos[index];
-              return FutureBuilder<ImageProvider>(
-                future: _getVideoThumbnail(video),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    return PhotoGridItem(
-                      photo: video,
-                      imageProvider: snapshot.data!,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (context) => PhotoViewScreen(
-                                  photoId: video.id,
-                                  source: PhotoViewSource.gallery,
-                                ),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => PhotoViewScreen(
+                            photoId: video.id,
+                            source: PhotoViewSource.gallery,
                           ),
-                        );
-                      },
-                    );
-                  }
-                  return const Center(child: CircularProgressIndicator());
+                    ),
+                  );
                 },
               );
-            },
-          ),
+            }
+            return const Center(child: CircularProgressIndicator());
+          },
         );
       },
     );
   }
-}
-
-class Range {
-  final int start;
-  final int end;
-
-  Range(this.start, this.end);
 }
