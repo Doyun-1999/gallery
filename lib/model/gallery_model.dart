@@ -649,4 +649,48 @@ class GalleryModel extends ChangeNotifier {
     );
     return album.photoIds.contains(photoId);
   }
+
+  // 기기 앨범 목록을 가져오는 메서드
+  Future<List<AssetPathEntity>> getDeviceAlbums() async {
+    try {
+      debugPrint('PhotoManager.getAssetPathList 호출 시작...');
+      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+        type: RequestType.all,
+      );
+      debugPrint('PhotoManager.getAssetPathList 결과: ${albums.length}개의 앨범');
+      return albums;
+    } catch (e) {
+      debugPrint('기기 앨범 로드 중 오류 발생: $e');
+      return [];
+    }
+  }
+
+  // 특정 기기 앨범의 사진들을 가져오는 메서드
+  Future<List<Photo>> getDeviceAlbumPhotos(AssetPathEntity album) async {
+    try {
+      final List<AssetEntity> assets = await album.getAssetListPaged(
+        page: 0,
+        size: 1000, // 한 번에 최대 1000개까지 로드
+      );
+
+      final List<Photo> photos = [];
+      for (final asset in assets) {
+        final file = await asset.file;
+        if (file != null) {
+          final photo = Photo(
+            id: asset.id,
+            path: file.path,
+            date: asset.createDateTime,
+            asset: asset,
+            isVideo: asset.type == AssetType.video,
+          );
+          photos.add(photo);
+        }
+      }
+      return photos;
+    } catch (e) {
+      debugPrint('기기 앨범 사진 로드 중 오류 발생: $e');
+      return [];
+    }
+  }
 }
