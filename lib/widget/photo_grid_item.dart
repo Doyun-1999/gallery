@@ -94,6 +94,24 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                               ),
                     ),
                   ),
+                  if (widget.photo.isVideo)
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
                   if (widget.isSelectable || widget.isSelected)
                     Positioned(
                       top: 8,
