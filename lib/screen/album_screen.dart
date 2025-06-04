@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:gallery_memo/widget/photo_grid_item.dart';
 import 'package:gallery_memo/screen/photo_view_screen.dart';
 import 'package:flutter/rendering.dart';
+import 'package:path/path.dart' as path;
 
 class AlbumScreen extends StatefulWidget {
   final String albumId;
@@ -122,9 +123,14 @@ class _AlbumScreenState extends State<AlbumScreen> {
               ),
             ],
           ),
-          body: ListView.builder(
+          body: GridView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(4),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+            ),
             itemCount: photos.length + (_isLoadingMore ? 1 : 0),
             itemBuilder: (context, index) {
               if (index >= photos.length) {
@@ -153,6 +159,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
                     ),
                   );
                 },
+                onLongPress: () {},
+                isSelectable: false,
+                isSelected: false,
+                key: ValueKey(photo.id),
               );
             },
           ),

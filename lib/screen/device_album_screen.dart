@@ -5,6 +5,7 @@ import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/model/photo_model.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
+import 'package:gallery_memo/widget/photo_grid_item.dart';
 
 class DeviceAlbumScreen extends StatefulWidget {
   final AssetPathEntity album;
@@ -134,9 +135,14 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
               ? const Center(child: CircularProgressIndicator())
               : _photos.isEmpty
               ? const Center(child: Text('사진이 없습니다.'))
-              : ListView.builder(
+              : GridView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(4),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 4,
+                ),
                 itemCount: _photos.length + (_isLoadingMore ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index >= _photos.length) {
@@ -149,23 +155,16 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
                   }
 
                   final photo = _photos[index];
-                  return GestureDetector(
+                  return PhotoGridItem(
+                    photo: photo,
+                    imageProvider: _getImageProvider(photo.path),
                     onTap: () {
                       // TODO: 사진 상세 보기 구현
                     },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: Image(
-                        image: _getImageProvider(photo.path),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey,
-                            child: const Icon(Icons.broken_image),
-                          );
-                        },
-                      ),
-                    ),
+                    onLongPress: () {},
+                    isSelectable: false,
+                    isSelected: false,
+                    key: ValueKey(photo.id),
                   );
                 },
               ),
