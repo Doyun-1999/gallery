@@ -17,14 +17,65 @@ class DeviceAlbumScreen extends StatefulWidget {
 
 class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
   final Map<String, ImageProvider> _imageCache = {};
-  static const int _maxCacheSize = 50;
+  static const int _maxCacheSize = 100;
   List<Photo> _photos = [];
   bool _isLoading = true;
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoadingMore = false;
+  static const int _pageSize = 30;
+  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadPhotos();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _imageCache.clear();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent * 0.8) {
+      _loadMorePhotos();
+    }
+  }
+
+  Future<void> _loadMorePhotos() async {
+    if (_isLoadingMore) return;
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+      final newPhotos = await galleryModel.getDeviceAlbumPhotos(
+        widget.album,
+        page: _currentPage + 1,
+        pageSize: _pageSize,
+      );
+
+      if (mounted) {
+        setState(() {
+          _photos.addAll(newPhotos);
+          _currentPage++;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        setState(() => _isLoadingMore = false);
+      }
+    }
   }
 
   Future<void> _loadPhotos() async {
@@ -34,7 +85,11 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
 
     try {
       final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-      _photos = await galleryModel.getDeviceAlbumPhotos(widget.album);
+      _photos = await galleryModel.getDeviceAlbumPhotos(
+        widget.album,
+        page: 0,
+        pageSize: _pageSize,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -58,7 +113,14 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
       if (_imageCache.length >= _maxCacheSize) {
         _imageCache.remove(_imageCache.keys.first);
       }
-      _imageCache[path] = FileImage(File(path));
+      final file = File(path);
+      final imageProvider = ResizeImage(
+        FileImage(file),
+        width: 200,
+        allowUpscaling: false,
+        policy: ResizeImagePolicy.fit,
+      );
+      _imageCache[path] = imageProvider;
     }
     return _imageCache[path]!;
   }
@@ -72,15 +134,20 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
               ? const Center(child: CircularProgressIndicator())
               : _photos.isEmpty
               ? const Center(child: Text('사진이 없습니다.'))
-              : GridView.builder(
+              : ListView.builder(
+                controller: _scrollController,
                 padding: const EdgeInsets.all(4),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 4,
-                  crossAxisSpacing: 4,
-                ),
-                itemCount: _photos.length,
+                itemCount: _photos.length + (_isLoadingMore ? 1 : 0),
                 itemBuilder: (context, index) {
+                  if (index >= _photos.length) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+
                   final photo = _photos[index];
                   return GestureDetector(
                     onTap: () {

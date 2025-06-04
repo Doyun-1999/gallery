@@ -19,13 +19,36 @@ class AlbumScreen extends StatefulWidget {
 
 class _AlbumScreenState extends State<AlbumScreen> {
   final Map<String, ImageProvider> _imageCache = {};
-  final int _maxCacheSize = 50;
-  int _lastPreloadIndex = -1;
+  final int _maxCacheSize = 100;
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoadingMore = false;
+  static const int _pageSize = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _imageCache.clear();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent * 0.8) {
+      _loadMorePhotos();
+    }
+  }
+
+  Future<void> _loadMorePhotos() async {
+    if (_isLoadingMore) return;
+    setState(() => _isLoadingMore = true);
+    await Future.delayed(const Duration(milliseconds: 100));
+    setState(() => _isLoadingMore = false);
   }
 
   ImageProvider _getImageProvider(String path) {
@@ -38,28 +61,13 @@ class _AlbumScreenState extends State<AlbumScreen> {
       final file = File(path);
       final imageProvider = ResizeImage(
         FileImage(file),
-        width: 300,
+        width: 200,
         allowUpscaling: false,
         policy: ResizeImagePolicy.fit,
       );
       _imageCache[path] = imageProvider;
     }
     return _imageCache[path]!;
-  }
-
-  void _preloadImages(List<Photo> photos, Range visibleRange) {
-    if (_lastPreloadIndex == visibleRange.start) return;
-    _lastPreloadIndex = visibleRange.start;
-
-    final preloadRange = Range(visibleRange.start, visibleRange.end + 5);
-
-    for (
-      int i = preloadRange.start;
-      i < preloadRange.end && i < photos.length;
-      i++
-    ) {
-      _getImageProvider(photos[i].path);
-    }
   }
 
   void _showClearAllDialog(BuildContext context, GalleryModel galleryModel) {
@@ -104,11 +112,6 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 .where((photo) => album.photoIds.contains(photo.id))
                 .toList();
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final visibleRange = Range(0, 10);
-          _preloadImages(photos, visibleRange);
-        });
-
         return Scaffold(
           appBar: AppBar(
             title: Text(album.name),
@@ -119,15 +122,20 @@ class _AlbumScreenState extends State<AlbumScreen> {
               ),
             ],
           ),
-          body: GridView.builder(
+          body: ListView.builder(
+            controller: _scrollController,
             padding: const EdgeInsets.all(8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: photos.length,
+            itemCount: photos.length + (_isLoadingMore ? 1 : 0),
             itemBuilder: (context, index) {
+              if (index >= photos.length) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+
               final photo = photos[index];
               return PhotoGridItem(
                 photo: photo,

@@ -687,11 +687,15 @@ class GalleryModel extends ChangeNotifier {
   }
 
   // 특정 기기 앨범의 사진들을 가져오는 메서드
-  Future<List<Photo>> getDeviceAlbumPhotos(AssetPathEntity album) async {
+  Future<List<Photo>> getDeviceAlbumPhotos(
+    AssetPathEntity album, {
+    int page = 0,
+    int pageSize = 30,
+  }) async {
     try {
       final List<AssetEntity> assets = await album.getAssetListPaged(
-        page: 0,
-        size: 1000, // 한 번에 최대 1000개까지 로드
+        page: page,
+        size: pageSize,
       );
 
       final List<Photo> photos = [];
