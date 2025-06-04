@@ -32,6 +32,8 @@ class GalleryModel extends ChangeNotifier {
   DateTime? _lastDeviceAlbumsLoadTime;
   static const Duration _cacheDuration = Duration(minutes: 5);
 
+  final Set<String> _selectedPhotoIds = {}; // 선택된 이미지 ID들을 저장하는 Set
+
   List<Photo> get photos => _photos;
   List<Album> get albums => List.unmodifiable(_albums);
   List<Photo> get favorites => List.unmodifiable(_favorites);
@@ -757,5 +759,31 @@ class GalleryModel extends ChangeNotifier {
     _cachedDeviceAlbums = null;
     _cachedThumbnails.clear();
     _lastDeviceAlbumsLoadTime = null;
+  }
+
+  // 선택된 이미지 ID들을 반환하는 getter
+  Set<String> get selectedPhotoIds => _selectedPhotoIds;
+
+  // 이미지 선택 상태를 토글하는 메서드
+  void togglePhotoSelection(String photoId) {
+    if (_selectedPhotoIds.contains(photoId)) {
+      _selectedPhotoIds.remove(photoId);
+    } else {
+      _selectedPhotoIds.add(photoId);
+    }
+    notifyListeners();
+  }
+
+  // 모든 선택을 해제하는 메서드
+  void clearSelection() {
+    _selectedPhotoIds.clear();
+    notifyListeners();
+  }
+
+  // 선택된 이미지들의 Photo 객체 리스트를 반환하는 getter
+  List<Photo> get selectedPhotos {
+    return _photos
+        .where((photo) => _selectedPhotoIds.contains(photo.id))
+        .toList();
   }
 }

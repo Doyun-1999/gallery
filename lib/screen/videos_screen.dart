@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/model/photo_model.dart';
