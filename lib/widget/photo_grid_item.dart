@@ -57,10 +57,14 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
               borderRadius: BorderRadius.circular(8),
               image: DecorationImage(
                 image:
-                    widget.photo.isVideo && _thumbnailProvider != null
-                        ? _thumbnailProvider!
+                    widget.photo.isVideo
+                        ? (_thumbnailProvider ??
+                            const AssetImage('assets/logo/logo.png'))
                         : widget.imageProvider,
                 fit: BoxFit.cover,
+                onError: (exception, stackTrace) {
+                  debugPrint('이미지 로드 오류: $exception');
+                },
               ),
             ),
             child: Stack(
