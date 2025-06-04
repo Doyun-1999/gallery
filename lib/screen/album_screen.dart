@@ -62,37 +62,6 @@ class _AlbumScreenState extends State<AlbumScreen> {
     }
   }
 
-  void _showQuickActions(
-    BuildContext context,
-    GalleryModel galleryModel,
-    String photoId,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.remove_circle),
-              title: const Text('앨범에서 제거'),
-              onTap: () {
-                galleryModel.removePhotoFromAlbum(photoId, widget.albumId);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('공유'),
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   void _showClearAllDialog(BuildContext context, GalleryModel galleryModel) {
     showDialog(
       context: context,

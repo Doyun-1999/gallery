@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/photo_model.dart';
-import 'dart:io';
 
 class PhotoGridItem extends StatelessWidget {
   final Photo photo;

@@ -1,12 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/screen/albums_screen.dart';
 import 'package:gallery_memo/screen/favorite_screen.dart';
 import 'package:gallery_memo/screen/gallery_screen.dart';
 import 'package:gallery_memo/utils/permission_manager.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -22,7 +19,6 @@ class HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   bool _hasPhotoPermission = false;
   bool _isLoading = true;
-  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -137,24 +133,6 @@ class HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-  }
-
-  void _handleNavigation(int index) {
-    if (_isNavigating) return;
-    if (_selectedIndex == index) return;
-
-    setState(() {
-      _isNavigating = true;
-      _selectedIndex = index;
-    });
-
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        setState(() {
-          _isNavigating = false;
-        });
-      }
-    });
   }
 
   @override

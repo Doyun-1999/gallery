@@ -153,32 +153,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
       },
     );
   }
-
-  void _showFeedback(BuildContext context, bool isFavorite) {
-    final message = isFavorite ? '즐겨찾기에서 제거됨' : '즐겨찾기에 추가됨';
-    final icon = isFavorite ? Icons.favorite_border : Icons.favorite;
-    final color = isFavorite ? Colors.grey : Colors.red;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 8),
-            Text(message),
-          ],
-        ),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: EdgeInsets.only(
-          bottom: MediaQuery.of(context).size.height * 0.1,
-          left: 20,
-          right: 20,
-        ),
-      ),
-    );
-  }
 }
 
 class Range {
