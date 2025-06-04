@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/model/photo_model.dart';
+import 'package:gallery_memo/screens/image_editor_screen.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:provider/provider.dart';
@@ -285,6 +286,21 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                                       ? Icons.note
                                       : Icons.note_add,
                               onPressed: () => _showMemoDialog(currentPhoto),
+                            ),
+                            const SizedBox(width: 16),
+                            PhotoControlButton(
+                              icon: Icons.edit,
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (context) => ImageEditorScreen(
+                                          imagePath: currentPhoto.path,
+                                        ),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
