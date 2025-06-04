@@ -6,15 +6,14 @@ import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
-import 'package:record/record.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:async';
 import 'package:gallery_memo/widget/memo_dialog.dart';
-import 'package:gallery_memo/widget/album_dialog.dart';
 import 'package:gallery_memo/widget/photo_info_dialog.dart';
 import 'package:gallery_memo/widget/delete_dialog.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:gallery_memo/widget/photo_control_button.dart';
+import 'package:gallery_memo/widget/photo_memo_display.dart';
+import 'package:gallery_memo/widget/album_dialogs.dart';
 
 class PhotoViewScreen extends StatefulWidget {
   final String photoId;
@@ -39,11 +38,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
   late PageController _pageController;
   late String _currentPhotoId;
   bool _showControls = true;
-  final double _currentScale = 1.0;
-  bool _isZoomed = false;
   late AnimationController _animationController;
-  late Animation<double> _animation;
-  final bool _showingDetails = true;
   String? _currentMemo;
 
   @override
@@ -55,11 +50,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
-    );
-
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
     );
 
     // 2초 후 컨트롤 자동 숨김
@@ -199,10 +189,13 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                           color: Colors.white,
                         ),
                         onPressed: () {
-                          _showAddToAlbumDialog(
-                            context,
-                            galleryModel,
-                            currentPhoto.id,
+                          showModalBottomSheet(
+                            context: context,
+                            backgroundColor: Colors.transparent,
+                            isScrollControlled: true,
+                            builder:
+                                (context) =>
+                                    AddToAlbumDialog(photoId: currentPhoto.id),
                           );
                         },
                       ),
@@ -239,9 +232,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                       minScale: PhotoViewComputedScale.contained,
                       maxScale: PhotoViewComputedScale.covered * 2,
                       onScaleEnd: (context, details, controllerValue) {
-                        setState(() {
-                          _isZoomed = (controllerValue.scale ?? 1.0) > 1.0;
-                        });
+                        setState(() {});
                       },
                     );
                   },
@@ -281,75 +272,14 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // 메모 표시
-                        if (_currentMemo?.isNotEmpty ?? false)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Color.alphaBlend(
-                                Colors.white.withAlpha(26),
-                                Colors.transparent,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.note,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _currentMemo ?? '',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        // 음성 메모 표시
-                        if (currentPhoto.voiceMemoPath != null &&
-                            currentPhoto.voiceMemoPath!.isNotEmpty)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Color.alphaBlend(
-                                Colors.white.withAlpha(26),
-                                Colors.transparent,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.audiotrack,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  '음성 메모',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        // 컨트롤 버튼
+                        PhotoMemoDisplay(
+                          memo: _currentMemo,
+                          voiceMemoPath: currentPhoto.voiceMemoPath,
+                        ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _buildControlButton(
+                            PhotoControlButton(
                               icon:
                                   _currentMemo != null
                                       ? Icons.note
@@ -367,49 +297,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
         );
       },
     );
-  }
-
-  Widget _buildControlButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    Color color = Colors.white,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(30),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Color.alphaBlend(
-              Colors.white.withAlpha(51),
-              Colors.transparent,
-            ),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-      ),
-    );
-  }
-
-  String _getFileSize(String filepath) {
-    final file = File(filepath);
-    try {
-      final bytes = file.lengthSync();
-      if (bytes < 1024) {
-        return '$bytes B';
-      } else if (bytes < 1024 * 1024) {
-        return '${(bytes / 1024).toStringAsFixed(1)} KB';
-      } else if (bytes < 1024 * 1024 * 1024) {
-        return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-      } else {
-        return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-      }
-    } catch (e) {
-      return 'Unknown';
-    }
   }
 
   void _showDeleteDialog(BuildContext context, Photo photo) {
@@ -498,272 +385,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
                 }
               },
             ),
-      );
-    }
-  }
-
-  void _showAddToAlbumDialog(
-    BuildContext context,
-    GalleryModel galleryModel,
-    String photoId,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      '앨범에 추가',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Consumer<GalleryModel>(
-                builder: (context, galleryModel, child) {
-                  final albums = galleryModel.albums;
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: albums.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == albums.length) {
-                        return ListTile(
-                          leading: const Icon(Icons.add),
-                          title: const Text('새 앨범 만들기'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showCreateAlbumDialog(
-                              context,
-                              galleryModel,
-                              photoId,
-                            );
-                          },
-                        );
-                      }
-                      final album = albums[index];
-                      final isInAlbum = galleryModel.isPhotoInAlbum(
-                        photoId,
-                        album.id,
-                      );
-                      return ListTile(
-                        leading: const Icon(Icons.photo_album),
-                        title: Text(album.name),
-                        trailing:
-                            isInAlbum
-                                ? const Icon(Icons.check, color: Colors.green)
-                                : null,
-                        onTap: () {
-                          if (isInAlbum) {
-                            galleryModel.removePhotoFromAlbum(
-                              photoId,
-                              album.id,
-                            );
-                          } else {
-                            galleryModel.addPhotoToAlbum(photoId, album.id);
-                          }
-                          // 앨범 선택 후 bottom sheet를 닫지 않음
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                isInAlbum
-                                    ? '${album.name}에서 사진을 제거했습니다.'
-                                    : '${album.name}에 사진을 추가했습니다.',
-                              ),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showCreateAlbumDialog(
-    BuildContext context,
-    GalleryModel galleryModel,
-    String photoId,
-  ) {
-    final textController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      '새 앨범 만들기',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: TextField(
-                  controller: textController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: '앨범 이름을 입력하세요',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.withOpacity(0.1),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('취소'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () async {
-                        final name = textController.text.trim();
-                        if (name.isNotEmpty) {
-                          await galleryModel.createAlbum(name);
-                          final albumId = galleryModel.albums.last.id;
-                          await galleryModel.addPhotoToAlbum(photoId, albumId);
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('새 앨범이 생성되고 사진이 추가되었습니다.'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).primaryColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text('만들기'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showFavoriteAnimation(BuildContext context, bool adding) {
-    if (adding) {
-      showDialog(
-        context: context,
-        barrierColor: Colors.transparent,
-        builder: (context) {
-          Future.delayed(const Duration(milliseconds: 800), () {
-            Navigator.of(context).pop();
-          });
-
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            child: Center(
-              child: TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 700),
-                builder: (context, value, child) {
-                  return Transform.scale(
-                    scale: 1.0 + (value * 1.5),
-                    child: Opacity(
-                      opacity: value > 0.5 ? 2.0 - (value * 2.0) : value * 2.0,
-                      child: const Icon(
-                        Icons.favorite,
-                        color: Colors.red,
-                        size: 100,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          );
-        },
       );
     }
   }
