@@ -27,6 +27,8 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
+	<string>이미지를 갤러리에서 불러오고 저장하기 위해 권한이 필요합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This Gallery app requires authority to access user&apos;s directory to show images</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>

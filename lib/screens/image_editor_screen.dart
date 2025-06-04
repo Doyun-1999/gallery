@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_editor/image_editor.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
 
 class ImageEditorScreen extends StatefulWidget {
   final String imagePath;
@@ -30,6 +31,96 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     super.initState();
     _imageFile = File(widget.imagePath);
     _editedImageData = _imageFile.readAsBytesSync();
+  }
+
+  Future<void> _saveImage(bool overwrite) async {
+    try {
+      if (_editedImageData == null) {
+        throw Exception('편집된 이미지 데이터가 없습니다.');
+      }
+
+      if (overwrite) {
+        // 덮어쓰기
+        final directory = path.dirname(_imageFile.path);
+        final tempPath = path.join(
+          directory,
+          'temp_${path.basename(_imageFile.path)}',
+        );
+        final tempFile = File(tempPath);
+
+        // 임시 파일에 저장
+        await tempFile.writeAsBytes(_editedImageData!);
+
+        // 원본 파일 삭제
+        if (await _imageFile.exists()) {
+          await _imageFile.delete();
+        }
+
+        // 임시 파일을 원본 파일로 이동
+        await tempFile.rename(_imageFile.path);
+
+        setState(() {
+          _imageFile = File(_imageFile.path);
+        });
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('이미지가 저장되었습니다.')));
+      } else {
+        // 새 파일로 저장
+        if (Platform.isIOS) {
+          try {
+            // iOS에서는 갤러리에 직접 저장
+            final result = await ImageGallerySaver.saveImage(
+              _editedImageData!,
+              quality: 100,
+              name:
+                  'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}',
+            );
+
+            if (result['isSuccess'] == true) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('갤러리에 저장되었습니다.')));
+            } else {
+              throw Exception('갤러리 저장 실패: ${result['errorMessage']}');
+            }
+          } catch (e) {
+            print('iOS 저장 실패 상세: $e');
+            // iOS 저장 실패 시 앱 디렉토리에 저장 시도
+            final directory = await getApplicationDocumentsDirectory();
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            final fileName =
+                'edited_${timestamp}_${path.basename(widget.imagePath)}';
+            final newPath = path.join(directory.path, fileName);
+            final newFile = File(newPath);
+            await newFile.writeAsBytes(_editedImageData!);
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('앱 디렉토리에 저장되었습니다: $fileName')),
+            );
+          }
+        } else {
+          // Android에서는 앱 디렉토리에 저장
+          final directory = await getApplicationDocumentsDirectory();
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          final fileName =
+              'edited_${timestamp}_${path.basename(widget.imagePath)}';
+          final newPath = path.join(directory.path, fileName);
+          final newFile = File(newPath);
+          await newFile.writeAsBytes(_editedImageData!);
+
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('새 파일로 저장되었습니다: $fileName')));
+        }
+      }
+    } catch (e) {
+      print('저장 실패 상세: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('저장 실패: $e')));
+    }
   }
 
   Future<void> _cropImage() async {
@@ -64,6 +155,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('이미지 자르기 실패: $e')));
+      print('자르기 실패 상세: $e'); // 디버깅을 위한 로그
     }
   }
 
@@ -85,6 +177,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('이미지 회전 실패: $e')));
+      print('회전 실패 상세: $e'); // 디버깅을 위한 로그
     }
   }
 
@@ -105,37 +198,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _cropEnd = null;
       }
     });
-  }
-
-  Future<void> _saveImage(bool overwrite) async {
-    try {
-      if (_editedImageData == null) {
-        throw Exception('편집된 이미지 데이터가 없습니다.');
-      }
-
-      if (overwrite) {
-        // 덮어쓰기
-        await _imageFile.writeAsBytes(_editedImageData!);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('이미지가 저장되었습니다.')));
-      } else {
-        // 새 파일로 저장
-        final directory = await getApplicationDocumentsDirectory();
-        final fileName = 'edited_${path.basename(widget.imagePath)}';
-        final newPath = path.join(directory.path, fileName);
-
-        final newFile = File(newPath);
-        await newFile.writeAsBytes(_editedImageData!);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('새 파일로 저장되었습니다: $fileName')));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('저장 실패: $e')));
-    }
   }
 
   void _showSaveDialog() {
