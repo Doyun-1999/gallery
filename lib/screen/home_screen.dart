@@ -114,9 +114,9 @@ class HomeScreenState extends State<HomeScreen> {
           },
         );
       case 1:
-        return const FavoritesScreen();
-      case 2:
         return const VideosScreen();
+      case 2:
+        return const FavoritesScreen();
       case 3:
         return const AlbumsScreen();
       default:
@@ -247,9 +247,9 @@ class HomeScreenState extends State<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(0, Icons.photo_library, '갤러리'),
-                _buildNavItem(1, Icons.favorite, '즐겨찾기'),
-                _buildNavItem(2, Icons.video_library, '동영상'),
-                _buildNavItem(3, Icons.album, '앨범'),
+                _buildNavItem(1, Icons.video_library, '동영상'),
+                _buildNavItem(2, Icons.favorite, '즐겨찾기'),
+                _buildNavItem(4, Icons.album, '앨범'),
               ],
             ),
           ),
