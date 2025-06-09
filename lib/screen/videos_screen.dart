@@ -5,6 +5,7 @@ import 'package:gallery_memo/model/photo_model.dart';
 import 'package:gallery_memo/widget/photo_grid_item.dart';
 import 'package:provider/provider.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:gallery_memo/screen/photo_view_screen.dart';
 
 class VideosScreen extends StatefulWidget {
   final bool isSelectMode;
@@ -252,7 +253,22 @@ class VideosScreenState extends State<VideosScreen>
               return PhotoGridItem(
                 photo: video,
                 imageProvider: snapshot.data!,
-                onTap: () => widget.onPhotoTap(video.id),
+                onTap: () {
+                  if (widget.isSelectMode) {
+                    widget.onPhotoTap(video.id);
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => PhotoViewScreen(
+                              photoId: video.id,
+                              source: PhotoViewSource.video,
+                            ),
+                      ),
+                    );
+                  }
+                },
                 onLongPress: () => widget.onPhotoLongPress(video.id),
                 isSelectable: widget.isSelectMode,
                 isSelected: widget.selectedPhotoIds.contains(video.id),

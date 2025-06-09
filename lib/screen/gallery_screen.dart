@@ -96,7 +96,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     super.build(context);
     return Consumer<GalleryModel>(
       builder: (context, galleryModel, child) {
-        final photos = galleryModel.photos.where((p) => !p.isVideo).toList();
+        final photos = galleryModel.photos;
 
         if (photos.isEmpty && !galleryModel.isLoading) {
           return const Center(child: Text('사진이 없습니다.'));
