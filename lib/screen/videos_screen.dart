@@ -1,26 +1,41 @@
+// lib/screen/videos_screen.dart
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/model/photo_model.dart';
-import 'package:gallery_memo/screen/photo_view_screen.dart';
 import 'package:gallery_memo/widget/photo_grid_item.dart';
 import 'package:provider/provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 class VideosScreen extends StatefulWidget {
-  const VideosScreen({super.key});
+  final bool isSelectMode;
+  final Set<String> selectedPhotoIds;
+  final void Function(String photoId) onPhotoTap;
+  final void Function(String photoId) onPhotoLongPress;
+
+  const VideosScreen({
+    super.key,
+    required this.isSelectMode,
+    required this.selectedPhotoIds,
+    required this.onPhotoTap,
+    required this.onPhotoLongPress,
+  });
 
   @override
   VideosScreenState createState() => VideosScreenState();
 }
 
-class VideosScreenState extends State<VideosScreen> {
+class VideosScreenState extends State<VideosScreen>
+    with AutomaticKeepAliveClientMixin<VideosScreen> {
   bool _isLoading = true;
   List<Photo> _videos = [];
   final Map<String, ImageProvider> _thumbnailCache = {};
-  static const int _pageSize = 20;
+  static const int _pageSize = 30;
   int _currentPage = 0;
   bool _hasMoreVideos = true;
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -44,9 +59,11 @@ class VideosScreenState extends State<VideosScreen> {
   }
 
   Future<void> _loadVideos() async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
@@ -54,10 +71,13 @@ class VideosScreenState extends State<VideosScreen> {
       );
 
       if (albums.isEmpty) {
-        setState(() {
-          _isLoading = false;
-          _videos = [];
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _videos = [];
+            _hasMoreVideos = false;
+          });
+        }
         return;
       }
 
@@ -65,15 +85,6 @@ class VideosScreenState extends State<VideosScreen> {
         page: 0,
         size: _pageSize,
       );
-
-      if (videoAssets.isEmpty) {
-        setState(() {
-          _isLoading = false;
-          _videos = [];
-          _hasMoreVideos = false;
-        });
-        return;
-      }
 
       final List<Photo> newVideos = [];
       for (final asset in videoAssets) {
@@ -90,27 +101,33 @@ class VideosScreenState extends State<VideosScreen> {
         }
       }
 
-      setState(() {
-        _videos = newVideos;
-        _currentPage = 1;
-        _isLoading = false;
-        _hasMoreVideos = videoAssets.length == _pageSize;
-      });
+      if (mounted) {
+        setState(() {
+          _videos = newVideos;
+          _currentPage = 1;
+          _isLoading = false;
+          _hasMoreVideos = videoAssets.length == _pageSize;
+        });
+      }
     } catch (e) {
-      print('비디오 로드 중 오류 발생: $e');
-      setState(() {
-        _isLoading = false;
-        _videos = [];
-      });
+      debugPrint('비디오 로드 중 오류 발생: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _videos = [];
+        });
+      }
     }
   }
 
   Future<void> _loadMoreVideos() async {
     if (!_hasMoreVideos || _isLoading) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
@@ -118,10 +135,12 @@ class VideosScreenState extends State<VideosScreen> {
       );
 
       if (albums.isEmpty) {
-        setState(() {
-          _isLoading = false;
-          _hasMoreVideos = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _hasMoreVideos = false;
+          });
+        }
         return;
       }
 
@@ -131,10 +150,12 @@ class VideosScreenState extends State<VideosScreen> {
       );
 
       if (videoAssets.isEmpty) {
-        setState(() {
-          _isLoading = false;
-          _hasMoreVideos = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _hasMoreVideos = false;
+          });
+        }
         return;
       }
 
@@ -153,17 +174,21 @@ class VideosScreenState extends State<VideosScreen> {
         }
       }
 
-      setState(() {
-        _videos.addAll(newVideos);
-        _currentPage++;
-        _isLoading = false;
-        _hasMoreVideos = videoAssets.length == _pageSize;
-      });
+      if (mounted) {
+        setState(() {
+          _videos.addAll(newVideos);
+          _currentPage++;
+          _isLoading = false;
+          _hasMoreVideos = videoAssets.length == _pageSize;
+        });
+      }
     } catch (e) {
-      print('추가 비디오 로드 중 오류 발생: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      debugPrint('추가 비디오 로드 중 오류 발생: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -184,7 +209,7 @@ class VideosScreenState extends State<VideosScreen> {
           return imageProvider;
         }
       } catch (e) {
-        print('썸네일 생성 중 오류 발생: $e');
+        debugPrint('썸네일 생성 중 오류 발생: $e');
       }
     }
 
@@ -193,6 +218,7 @@ class VideosScreenState extends State<VideosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     if (_isLoading && _videos.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -211,7 +237,7 @@ class VideosScreenState extends State<VideosScreen> {
         crossAxisSpacing: 8.0,
         mainAxisSpacing: 8.0,
       ),
-      itemCount: _videos.length + (_hasMoreVideos ? 1 : 0),
+      itemCount: _videos.length + (_hasMoreVideos && _isLoading ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == _videos.length) {
           return const Center(child: CircularProgressIndicator());
@@ -221,31 +247,21 @@ class VideosScreenState extends State<VideosScreen> {
         return FutureBuilder<ImageProvider>(
           future: _getVideoThumbnail(video),
           builder: (context, snapshot) {
-            if (snapshot.hasData) {
+            if (snapshot.connectionState == ConnectionState.done &&
+                snapshot.hasData) {
               return PhotoGridItem(
                 photo: video,
                 imageProvider: snapshot.data!,
-                onTap: () {
-                  final galleryModel = Provider.of<GalleryModel>(
-                    context,
-                    listen: false,
-                  );
-                  galleryModel.photos.addAll(_videos);
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder:
-                          (context) => PhotoViewScreen(
-                            photoId: video.id,
-                            source: PhotoViewSource.gallery,
-                          ),
-                    ),
-                  );
-                },
+                onTap: () => widget.onPhotoTap(video.id),
+                onLongPress: () => widget.onPhotoLongPress(video.id),
+                isSelectable: widget.isSelectMode,
+                isSelected: widget.selectedPhotoIds.contains(video.id),
               );
             }
-            return const Center(child: CircularProgressIndicator());
+            return Container(
+              color: Colors.grey[300],
+              child: const Center(child: CircularProgressIndicator()),
+            );
           },
         );
       },

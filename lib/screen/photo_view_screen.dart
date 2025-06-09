@@ -32,7 +32,7 @@ class PhotoViewScreen extends StatefulWidget {
   PhotoViewScreenState createState() => PhotoViewScreenState();
 }
 
-enum PhotoViewSource { gallery, favorites, album }
+enum PhotoViewSource { gallery, favorites, album, video }
 
 class PhotoViewScreenState extends State<PhotoViewScreen> {
   PageController? _pageController;

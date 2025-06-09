@@ -1,6 +1,8 @@
+// lib/screen/album_screen.dart
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:gallery_memo/model/album_model.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/model/photo_model.dart';
 import 'package:provider/provider.dart';
@@ -23,7 +25,11 @@ class _AlbumScreenState extends State<AlbumScreen> {
   final int _maxCacheSize = 100;
   final ScrollController _scrollController = ScrollController();
   bool _isLoadingMore = false;
-  static const int _pageSize = 30;
+
+  // --- 선택 모드 관련 상태 변수 추가 ---
+  bool _isSelectMode = false;
+  final Set<String> _selectedPhotoIds = {};
+  // ------------------------------------
 
   @override
   void initState() {
@@ -48,9 +54,43 @@ class _AlbumScreenState extends State<AlbumScreen> {
   Future<void> _loadMorePhotos() async {
     if (_isLoadingMore) return;
     setState(() => _isLoadingMore = true);
+    // In a real app, you would fetch more data here.
+    // For this example, we'll just simulate a delay.
     await Future.delayed(const Duration(milliseconds: 100));
-    setState(() => _isLoadingMore = false);
+    if (mounted) {
+      setState(() => _isLoadingMore = false);
+    }
   }
+
+  // --- 선택 모드 관리 함수 추가 ---
+  void _enterSelectMode() {
+    if (!_isSelectMode) {
+      setState(() {
+        _isSelectMode = true;
+      });
+    }
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _isSelectMode = false;
+      _selectedPhotoIds.clear();
+    });
+  }
+
+  void _togglePhotoSelection(String photoId) {
+    setState(() {
+      if (_selectedPhotoIds.contains(photoId)) {
+        _selectedPhotoIds.remove(photoId);
+        if (_selectedPhotoIds.isEmpty) {
+          _isSelectMode = false;
+        }
+      } else {
+        _selectedPhotoIds.add(photoId);
+      }
+    });
+  }
+  // -------------------------------
 
   ImageProvider _getImageProvider(String path) {
     if (!_imageCache.containsKey(path)) {
@@ -77,7 +117,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text('앨범 비우기'),
-          content: const Text('정말로 이 앨범의 모든 사진을 삭제하시겠습니까?'),
+          content: const Text('정말로 이 앨범의 모든 사진을 제거하시겠습니까? (앨범에서만 제거됩니다.)'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -85,15 +125,17 @@ class _AlbumScreenState extends State<AlbumScreen> {
             ),
             TextButton(
               onPressed: () {
-                for (final photoId
-                    in galleryModel.albums
-                        .firstWhere((album) => album.id == widget.albumId)
-                        .photoIds) {
+                final album = galleryModel.albums.firstWhere(
+                  (album) => album.id == widget.albumId,
+                );
+                final photoIdsToRemove = List<String>.from(album.photoIds);
+
+                for (final photoId in photoIdsToRemove) {
                   galleryModel.removePhotoFromAlbum(photoId, widget.albumId);
                 }
                 Navigator.pop(context);
               },
-              child: const Text('삭제'),
+              child: const Text('제거'),
             ),
           ],
         );
@@ -107,22 +149,31 @@ class _AlbumScreenState extends State<AlbumScreen> {
       builder: (context, galleryModel, child) {
         final album = galleryModel.albums.firstWhere(
           (album) => album.id == widget.albumId,
+          orElse: () {
+            // Handle case where album is not found, maybe pop the navigation
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              }
+            });
+            return Album(
+              id: '',
+              name: 'Not Found',
+              dateCreated: DateTime.now(),
+            );
+          },
         );
+        if (album.id.isEmpty) {
+          return const Scaffold(body: Center(child: Text("앨범을 찾을 수 없습니다.")));
+        }
+
         final photos =
             galleryModel.photos
                 .where((photo) => album.photoIds.contains(photo.id))
                 .toList();
 
         return Scaffold(
-          appBar: AppBar(
-            title: Text(album.name),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.delete),
-                onPressed: () => _showClearAllDialog(context, galleryModel),
-              ),
-            ],
-          ),
+          appBar: _buildAppBar(context, galleryModel, album.name),
           body: GridView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.all(4),
@@ -146,22 +197,31 @@ class _AlbumScreenState extends State<AlbumScreen> {
               return PhotoGridItem(
                 photo: photo,
                 imageProvider: _getImageProvider(photo.path),
+                isSelectable: _isSelectMode,
+                isSelected: _selectedPhotoIds.contains(photo.id),
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder:
-                          (context) => PhotoViewScreen(
-                            photoId: photo.id,
-                            source: PhotoViewSource.album,
-                            albumId: widget.albumId,
-                          ),
-                    ),
-                  );
+                  if (_isSelectMode) {
+                    _togglePhotoSelection(photo.id);
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => PhotoViewScreen(
+                              photoId: photo.id,
+                              source: PhotoViewSource.album,
+                              albumId: widget.albumId,
+                            ),
+                      ),
+                    );
+                  }
                 },
-                onLongPress: () {},
-                isSelectable: false,
-                isSelected: false,
+                onLongPress: () {
+                  if (!_isSelectMode) {
+                    _enterSelectMode();
+                    _togglePhotoSelection(photo.id);
+                  }
+                },
                 key: ValueKey(photo.id),
               );
             },
@@ -169,6 +229,64 @@ class _AlbumScreenState extends State<AlbumScreen> {
         );
       },
     );
+  }
+
+  AppBar _buildAppBar(
+    BuildContext context,
+    GalleryModel galleryModel,
+    String albumName,
+  ) {
+    if (_isSelectMode) {
+      return AppBar(
+        title: Text('${_selectedPhotoIds.length}개 선택'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: _exitSelectMode,
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.photo_album_outlined),
+            tooltip: '앨범 커버로 설정',
+            onPressed:
+                _selectedPhotoIds.length == 1
+                    ? () {
+                      galleryModel.setAlbumCover(
+                        widget.albumId,
+                        _selectedPhotoIds.first,
+                      );
+                      _exitSelectMode();
+                    }
+                    : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            tooltip: '앨범에서 제거',
+            onPressed:
+                _selectedPhotoIds.isNotEmpty
+                    ? () {
+                      for (var photoId in _selectedPhotoIds) {
+                        galleryModel.removePhotoFromAlbum(
+                          photoId,
+                          widget.albumId,
+                        );
+                      }
+                      _exitSelectMode();
+                    }
+                    : null,
+          ),
+        ],
+      );
+    } else {
+      return AppBar(
+        title: Text(albumName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () => _showClearAllDialog(context, galleryModel),
+          ),
+        ],
+      );
+    }
   }
 }
 

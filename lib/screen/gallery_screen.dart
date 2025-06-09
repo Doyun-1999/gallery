@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
-import 'package:gallery_memo/model/photo_model.dart';
-import 'package:gallery_memo/screen/photo_view_screen.dart';
 import 'package:gallery_memo/widget/photo_grid_item.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
@@ -24,11 +22,15 @@ class GalleryScreen extends StatefulWidget {
   State<GalleryScreen> createState() => _GalleryScreenState();
 }
 
-class _GalleryScreenState extends State<GalleryScreen> {
+class _GalleryScreenState extends State<GalleryScreen>
+    with AutomaticKeepAliveClientMixin<GalleryScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   final Map<String, ImageProvider> _imageCache = {};
-  static const int _maxCacheSize = 50;
+  static const int _maxCacheSize = 100;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -91,11 +93,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Consumer<GalleryModel>(
       builder: (context, galleryModel, child) {
-        final photos = galleryModel.photos;
+        final photos = galleryModel.photos.where((p) => !p.isVideo).toList();
 
-        if (photos.isEmpty) {
+        if (photos.isEmpty && !galleryModel.isLoading) {
           return const Center(child: Text('사진이 없습니다.'));
         }
 
