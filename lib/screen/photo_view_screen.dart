@@ -1,10 +1,9 @@
-// screens/photo_view_screen.dart
+// lib/screen/photo_view_screen.dart
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/model/photo_model.dart';
 import 'package:gallery_memo/screens/image_editor_screen.dart';
 import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import 'dart:async';
@@ -35,149 +34,74 @@ class PhotoViewScreen extends StatefulWidget {
 
 enum PhotoViewSource { gallery, favorites, album }
 
-class PhotoViewScreenState extends State<PhotoViewScreen>
-    with SingleTickerProviderStateMixin {
-  late PageController _pageController;
+class PhotoViewScreenState extends State<PhotoViewScreen> {
+  PageController? _pageController;
+  bool _isLoading = true;
+
   late String _currentPhotoId;
   bool _showControls = true;
-  late AnimationController _animationController;
   String? _currentMemo;
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
+
+  // 제스처 충돌 해결을 위한 상태 변수
+  bool _isZooming = false;
 
   @override
   void initState() {
     super.initState();
     _currentPhotoId = widget.photoId;
 
-    // 애니메이션 컨트롤러 설정
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+      final photoList = _getPhotoList(galleryModel);
+      final initialIndex = photoList.indexWhere((p) => p.id == widget.photoId);
 
-    // 2초 후 컨트롤 자동 숨김
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && _showControls) {
+      if (initialIndex != -1) {
         setState(() {
-          _showControls = false;
+          _pageController = PageController(initialPage: initialIndex);
+          _loadDataForCurrentPhoto(galleryModel, photoList[initialIndex]);
+          _isLoading = false;
         });
+      } else {
+        if (Navigator.canPop(context)) Navigator.pop(context);
       }
     });
 
-    // 메모 데이터 로드
-    _loadMemoData();
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && _showControls) {
+        setState(() => _showControls = false);
+      }
+    });
   }
 
   @override
   void dispose() {
-    _videoController?.removeListener(() {});
-    _videoController?.pause();
+    _pageController?.dispose();
     _videoController?.dispose();
-    _videoController = null;
-    _animationController.dispose();
-    _pageController.dispose();
     super.dispose();
   }
 
   Future<void> _initializeVideo(String path) async {
     try {
-      // 기존 컨트롤러 정리
       await _videoController?.dispose();
       _videoController = null;
+      if (!mounted) return;
 
-      // 파일 존재 확인
       final file = File(path);
-      if (!await file.exists()) {
-        throw Exception('비디오 파일을 찾을 수 없습니다.');
-      }
+      if (!await file.exists()) throw Exception('Video file not found');
 
-      // 새 컨트롤러 생성 및 초기화
       _videoController = VideoPlayerController.file(file);
-
-      // 비디오 초기화 시도
-      await _videoController!.initialize().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('비디오 초기화 시간이 초과되었습니다.');
-        },
-      );
-
-      // 오디오 볼륨 설정
+      await _videoController!.initialize();
       await _videoController!.setVolume(1.0);
+      await _videoController!.play();
+      _videoController!.setLooping(true);
 
-      if (mounted) {
-        setState(() {
-          _isVideoInitialized = true;
-        });
-
-        // 비디오 재생 시작
-        await _videoController!.play();
-
-        // 재생 상태 모니터링
-        _videoController!.addListener(() {
-          if (_videoController!.value.hasError) {
-            debugPrint(
-              '비디오 재생 중 오류 발생: ${_videoController!.value.errorDescription}',
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    '비디오 재생 중 오류가 발생했습니다: ${_videoController!.value.errorDescription}',
-                  ),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-          }
-        });
-      }
+      if (mounted) setState(() => _isVideoInitialized = true);
     } catch (e) {
-      debugPrint('비디오 초기화 중 오류 발생: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('비디오를 재생할 수 없습니다: ${e.toString()}'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        setState(() {
-          _isVideoInitialized = false;
-        });
-      }
+      if (mounted) setState(() => _isVideoInitialized = false);
     }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final galleryModel = Provider.of<GalleryModel>(context);
-    final List<Photo> photoList = _getPhotoList(galleryModel);
-
-    if (photoList.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && Navigator.canPop(context)) {
-          Navigator.pop(context);
-        }
-      });
-      return;
-    }
-
-    final int initialIndex = photoList.indexWhere(
-      (photo) => photo.id == widget.photoId,
-    );
-    if (initialIndex == -1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && Navigator.canPop(context)) {
-          Navigator.pop(context);
-        }
-      });
-      return;
-    }
-
-    _pageController = PageController(initialPage: initialIndex);
-    _loadMemoData();
   }
 
   List<Photo> _getPhotoList(GalleryModel galleryModel) {
@@ -185,34 +109,27 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
       case PhotoViewSource.favorites:
         return galleryModel.favorites;
       case PhotoViewSource.album:
-        if (widget.albumId != null) {
-          return galleryModel.getAlbumPhotos(widget.albumId!);
-        }
-        return galleryModel.photos;
-      case PhotoViewSource.gallery:
+        if (widget.albumId == null) return [];
+        return galleryModel.getAlbumPhotos(widget.albumId!);
+      default:
         return galleryModel.photos;
     }
   }
 
-  Future<void> _loadMemoData() async {
-    final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-    final photo = galleryModel.photos.firstWhere(
-      (photo) => photo.id == _currentPhotoId,
-      orElse: () => galleryModel.photos.first,
-    );
+  void _loadDataForCurrentPhoto(GalleryModel galleryModel, Photo photo) {
+    if (!mounted) return;
 
     setState(() {
       _currentMemo = photo.memo;
     });
 
     if (photo.isVideo) {
-      await _initializeVideo(photo.path);
+      _initializeVideo(photo.path);
     } else {
+      _videoController?.pause();
       _videoController?.dispose();
       _videoController = null;
-      setState(() {
-        _isVideoInitialized = false;
-      });
+      if (mounted) setState(() => _isVideoInitialized = false);
     }
   }
 
@@ -227,412 +144,336 @@ class PhotoViewScreenState extends State<PhotoViewScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GalleryModel>(
-      builder: (context, galleryModel, child) {
-        final List<Photo> photoList = _getPhotoList(galleryModel);
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
-        if (photoList.isEmpty) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('사진 보기')),
-            body: const Center(child: Text('사진을 찾을 수 없습니다.')),
-          );
-        }
+    final galleryModel = Provider.of<GalleryModel>(context);
+    final photoList = _getPhotoList(galleryModel);
 
-        final currentPhoto = photoList.firstWhere(
-          (photo) => photo.id == _currentPhotoId,
-          orElse: () => photoList.first,
-        );
-
-        return Scaffold(
+    if (photoList.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
           backgroundColor: Colors.black,
-          extendBodyBehindAppBar: true,
-          appBar:
-              _showControls
-                  ? AppBar(
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    leading: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    actions: [
-                      IconButton(
-                        icon: Icon(
-                          currentPhoto.isFavorite
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          color:
-                              currentPhoto.isFavorite
-                                  ? Colors.red
-                                  : Colors.white,
-                        ),
-                        onPressed: () {
-                          galleryModel.toggleFavorite(currentPhoto.id);
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.add_to_photos,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
-                          showModalBottomSheet(
-                            context: context,
-                            backgroundColor: Colors.transparent,
-                            isScrollControlled: true,
-                            builder:
-                                (context) =>
-                                    AddToAlbumDialog(photoId: currentPhoto.id),
-                          );
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.info, color: Colors.white),
-                        onPressed: () {
-                          _showPhotoInfoDialog(context, currentPhoto);
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () {
-                          _showDeleteDialog(context, currentPhoto);
-                        },
-                      ),
-                    ],
-                  )
-                  : null,
-          body: Stack(
-            children: [
-              GestureDetector(
-                onTap: () {
+          title: const Text('사진 보기'),
+        ),
+        backgroundColor: Colors.black,
+        body: const Center(
+          child: Text('사진을 찾을 수 없습니다.', style: TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+
+    final currentPhoto = photoList.firstWhere(
+      (photo) => photo.id == _currentPhotoId,
+      orElse: () => photoList.first,
+    );
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController!,
+            // 제스처 충돌 해결을 위해 physics 속성 설정
+            physics:
+                _isZooming
+                    ? const NeverScrollableScrollPhysics()
+                    : const BouncingScrollPhysics(),
+            itemCount: photoList.length,
+            onPageChanged: (index) {
+              setState(() => _currentPhotoId = photoList[index].id);
+              _loadDataForCurrentPhoto(galleryModel, photoList[index]);
+            },
+            itemBuilder: (context, index) {
+              final photo = photoList[index];
+              if (photo.isVideo) {
+                return Container(color: Colors.black);
+              }
+              return PhotoView(
+                key: ValueKey(photo.id),
+                imageProvider: FileImage(File(photo.path)),
+                initialScale: PhotoViewComputedScale.contained,
+                minScale: PhotoViewComputedScale.contained,
+                maxScale: PhotoViewComputedScale.covered * 4.0,
+                heroAttributes: PhotoViewHeroAttributes(
+                  tag: 'photo_${photo.id}',
+                ),
+                onTapUp: (context, details, controllerValue) {
+                  setState(() => _showControls = !_showControls);
+                },
+                // 확대/축소 상태 감지
+                scaleStateChangedCallback: (PhotoViewScaleState scaleState) {
                   setState(() {
-                    _showControls = !_showControls;
+                    _isZooming = scaleState != PhotoViewScaleState.initial;
                   });
                 },
+              );
+            },
+          ),
+          if (currentPhoto.isVideo)
+            GestureDetector(
+              onTap: () => setState(() => _showControls = !_showControls),
+              child: Container(
+                color: Colors.black,
+                child:
+                    _isVideoInitialized && _videoController != null
+                        ? Center(
+                          child: AspectRatio(
+                            aspectRatio: _videoController!.value.aspectRatio,
+                            child: VideoPlayer(_videoController!),
+                          ),
+                        )
+                        : const Center(child: CircularProgressIndicator()),
+              ),
+            ),
+          _buildControlsOverlay(context, currentPhoto),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlsOverlay(BuildContext context, Photo currentPhoto) {
+    return AnimatedOpacity(
+      opacity: _showControls ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 200),
+      child: IgnorePointer(
+        ignoring: !_showControls,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                color: Colors.black.withOpacity(0.4),
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top,
+                ),
+                child: AppBar(
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  actions: [
+                    IconButton(
+                      icon: Icon(
+                        currentPhoto.isFavorite
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        color:
+                            currentPhoto.isFavorite ? Colors.red : Colors.white,
+                      ),
+                      onPressed:
+                          () => Provider.of<GalleryModel>(
+                            context,
+                            listen: false,
+                          ).toggleFavorite(currentPhoto.id),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.add_to_photos,
+                        color: Colors.white,
+                      ),
+                      onPressed:
+                          () => _showAddToAlbumDialog(context, currentPhoto.id),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.info, color: Colors.white),
+                      onPressed:
+                          () => _showPhotoInfoDialog(context, currentPhoto),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _showDeleteDialog(context, currentPhoto),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(
+                  16,
+                ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  ),
+                ),
                 child:
                     currentPhoto.isVideo
-                        ? _isVideoInitialized
-                            ? Center(
-                              child: AspectRatio(
-                                aspectRatio:
-                                    _videoController!.value.aspectRatio,
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    VideoPlayer(_videoController!),
-                                    if (_videoController!.value.hasError)
-                                      Container(
-                                        color: Colors.black54,
-                                        child: const Center(
-                                          child: Text(
-                                            '비디오를 재생할 수 없습니다',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            )
-                            : const Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CircularProgressIndicator(),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    '비디오 로딩 중...',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ],
-                              ),
-                            )
-                        : PhotoViewGallery.builder(
-                          scrollPhysics: const BouncingScrollPhysics(),
-                          builder: (BuildContext context, int index) {
-                            final photo = photoList[index];
-                            if (photo.isVideo) {
-                              return PhotoViewGalleryPageOptions(
-                                imageProvider: const AssetImage(
-                                  'assets/logo/logo.png',
-                                ),
-                                initialScale: PhotoViewComputedScale.contained,
-                                minScale: PhotoViewComputedScale.contained,
-                                maxScale: PhotoViewComputedScale.covered * 2,
-                                onScaleEnd: (
-                                  context,
-                                  details,
-                                  controllerValue,
-                                ) {
-                                  setState(() {});
-                                },
-                              );
-                            }
-                            return PhotoViewGalleryPageOptions(
-                              imageProvider: FileImage(File(photo.path)),
-                              initialScale: PhotoViewComputedScale.contained,
-                              minScale: PhotoViewComputedScale.contained,
-                              maxScale: PhotoViewComputedScale.covered * 2,
-                              onScaleEnd: (context, details, controllerValue) {
-                                setState(() {});
-                              },
-                            );
-                          },
-                          itemCount: photoList.length,
-                          loadingBuilder:
-                              (context, event) => const Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                          pageController: _pageController,
-                          onPageChanged: (index) {
-                            setState(() {
-                              _currentPhotoId = photoList[index].id;
-                            });
-                            _loadMemoData();
-                          },
-                        ),
+                        ? _buildVideoControls()
+                        : _buildPhotoControls(currentPhoto),
               ),
-              if (_showControls && currentPhoto.isVideo && _isVideoInitialized)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Color.alphaBlend(
-                            Colors.black.withAlpha(204),
-                            Colors.transparent,
-                          ),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            _videoController!.value.isPlaying
-                                ? Icons.pause
-                                : Icons.play_arrow,
-                            color: Colors.white,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              if (_videoController!.value.isPlaying) {
-                                _videoController!.pause();
-                              } else {
-                                _videoController!.play();
-                              }
-                            });
-                          },
-                        ),
-                        ValueListenableBuilder(
-                          valueListenable: _videoController!,
-                          builder: (context, VideoPlayerValue value, child) {
-                            return Expanded(
-                              child: Slider(
-                                value: value.position.inMilliseconds.toDouble(),
-                                min: 0,
-                                max: value.duration.inMilliseconds.toDouble(),
-                                onChanged: (newValue) {
-                                  _videoController!.seekTo(
-                                    Duration(milliseconds: newValue.toInt()),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                        ValueListenableBuilder(
-                          valueListenable: _videoController!,
-                          builder: (context, VideoPlayerValue value, child) {
-                            return Text(
-                              '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
-                              style: const TextStyle(color: Colors.white),
-                            );
-                          },
-                        ),
-                      ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoControls(Photo photo) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PhotoMemoDisplay(
+          memo: _currentMemo,
+          voiceMemoPath: photo.voiceMemoPath,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            PhotoControlButton(
+              icon: _currentMemo != null ? Icons.note : Icons.note_add,
+              onPressed: () => _showMemoDialog(photo),
+            ),
+            const SizedBox(width: 16),
+            PhotoControlButton(
+              icon: Icons.edit,
+              onPressed:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => ImageEditorScreen(imagePath: photo.path),
                     ),
                   ),
-                ),
-              if (_showControls && !currentPhoto.isVideo)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Color.alphaBlend(
-                            Colors.black.withAlpha(204),
-                            Colors.transparent,
-                          ),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        PhotoMemoDisplay(
-                          memo: _currentMemo,
-                          voiceMemoPath: currentPhoto.voiceMemoPath,
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            PhotoControlButton(
-                              icon:
-                                  _currentMemo != null
-                                      ? Icons.note
-                                      : Icons.note_add,
-                              onPressed: () => _showMemoDialog(currentPhoto),
-                            ),
-                            const SizedBox(width: 16),
-                            PhotoControlButton(
-                              icon: Icons.edit,
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder:
-                                        (context) => ImageEditorScreen(
-                                          imagePath: currentPhoto.path,
-                                        ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVideoControls() {
+    if (!_isVideoInitialized || _videoController == null) return Container();
+    return Row(
+      children: [
+        IconButton(
+          icon: Icon(
+            _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+            color: Colors.white,
           ),
-        );
-      },
+          onPressed:
+              () => setState(
+                () =>
+                    _videoController!.value.isPlaying
+                        ? _videoController!.pause()
+                        : _videoController!.play(),
+              ),
+        ),
+        Expanded(
+          child: ValueListenableBuilder(
+            valueListenable: _videoController!,
+            builder: (context, VideoPlayerValue value, child) {
+              return Slider(
+                value: value.position.inMilliseconds.toDouble().clamp(
+                  0.0,
+                  value.duration.inMilliseconds.toDouble(),
+                ),
+                min: 0,
+                max: value.duration.inMilliseconds.toDouble(),
+                onChanged:
+                    (newValue) => _videoController!.seekTo(
+                      Duration(milliseconds: newValue.toInt()),
+                    ),
+              );
+            },
+          ),
+        ),
+        ValueListenableBuilder(
+          valueListenable: _videoController!,
+          builder:
+              (context, VideoPlayerValue value, child) => Text(
+                '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+        ),
+      ],
     );
   }
 
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final hours = twoDigits(duration.inHours);
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return duration.inHours > 0
-        ? '$hours:$minutes:$seconds'
-        : '$minutes:$seconds';
+    return '$minutes:$seconds';
+  }
+
+  void _showAddToAlbumDialog(BuildContext context, String photoId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => AddToAlbumDialog(photoId: photoId),
+    );
   }
 
   void _showDeleteDialog(BuildContext context, Photo photo) {
-    if (photo.voiceMemoPath != null && photo.voiceMemoPath!.isNotEmpty) {
-      showCupertinoDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return CupertinoAlertDialog(
-            title: const Text("음성 메모 삭제 확인"),
-            content: const Text("음성 메모를 삭제하시겠습니까?"),
+    showCupertinoDialog(
+      context: context,
+      builder:
+          (BuildContext dialogContext) => CupertinoAlertDialog(
+            title: Text('${photo.isVideo ? '비디오' : '사진'} 삭제'),
+            content: const Text('이 항목을 삭제하시겠습니까? 이 동작은 되돌릴 수 없습니다.'),
             actions: [
               CupertinoDialogAction(
-                child: const Text("취소"),
-                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('취소'),
+                onPressed: () => Navigator.of(dialogContext).pop(),
               ),
               CupertinoDialogAction(
-                child: const Text("삭제", style: TextStyle(color: Colors.red)),
+                isDestructiveAction: true,
+                child: const Text('삭제'),
                 onPressed: () async {
-                  // 다이얼로그 닫기
-                  Navigator.of(context).pop();
-
+                  Navigator.of(dialogContext).pop();
                   try {
-                    // 음성 메모 파일 삭제
-                    if (photo.voiceMemoPath != null &&
-                        photo.voiceMemoPath!.isNotEmpty) {
-                      final file = File(photo.voiceMemoPath!);
-                      if (await file.exists()) {
-                        await file.delete();
-                      }
-                      photo.voiceMemoPath = null;
-                    }
-
-                    // 사진 보기 화면 닫기
-                    if (mounted) {
+                    final galleryModel = Provider.of<GalleryModel>(
+                      context,
+                      listen: false,
+                    );
+                    final success = await galleryModel.deletePhoto(photo.id);
+                    if (success && mounted) {
                       Navigator.of(context).pop();
-                    }
-                  } catch (e) {
-                    debugPrint('음성 메모 삭제 중 오류 발생: $e');
-                    if (mounted) {
+                    } else if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('음성 메모 삭제 중 오류가 발생했습니다.')),
+                        const SnackBar(content: Text('삭제에 실패했습니다.')),
                       );
                     }
+                  } catch (e) {
+                    if (mounted)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('삭제 중 오류 발생')),
+                      );
                   }
                 },
               ),
             ],
-          );
-        },
-      );
-    } else {
-      showDialog(
-        context: context,
-        builder:
-            (context) => DeleteDialog(
-              photo: photo,
-              onDelete: () async {
-                // 다이얼로그 닫기
-                Navigator.of(context).pop();
-
-                try {
-                  final galleryModel = Provider.of<GalleryModel>(
-                    context,
-                    listen: false,
-                  );
-
-                  // 사진 삭제 시도
-                  final success = await galleryModel.deletePhoto(photo.id);
-
-                  if (success && mounted) {
-                    // 삭제 성공 시 사진 보기 화면 닫기
-                    Navigator.of(context).pop();
-                  } else if (mounted) {
-                    // 삭제 실패 시 에러 메시지 표시
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('사진 삭제에 실패했습니다.')),
-                    );
-                  }
-                } catch (e) {
-                  debugPrint('사진 삭제 중 오류 발생: $e');
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('사진 삭제 중 오류가 발생했습니다.')),
-                    );
-                  }
-                }
-              },
-            ),
-      );
-    }
+          ),
+    );
   }
 
   void _showPhotoInfoDialog(BuildContext context, Photo photo) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => PhotoInfoDialog(photo: photo),
+      backgroundColor: Colors.white,
+      builder:
+          (context) => Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: PhotoInfoDialog(photo: photo),
+          ),
     );
   }
 }
