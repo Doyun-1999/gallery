@@ -88,96 +88,113 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
     return GestureDetector(
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
-      child: Hero(
-        tag: 'photo_${widget.photo.id}',
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.black.withOpacity(0.1),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.black.withOpacity(0.1),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.0),
+                child: Image(
+                  image:
+                      widget.photo.isVideo && _thumbnailProvider != null
+                          ? _thumbnailProvider!
+                          : widget.imageProvider,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(Icons.broken_image);
+                  },
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8.0),
-                  child: Image(
-                    image:
-                        widget.photo.isVideo && _thumbnailProvider != null
-                            ? _thumbnailProvider!
-                            : widget.imageProvider,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.broken_image);
-                    },
+              ),
+            ),
+            if (_isLoadingThumbnail)
+              const Center(child: CircularProgressIndicator()),
+            if (widget.photo.isVideo)
+              Positioned(
+                bottom: 8,
+                right: 8,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.photo.isFavorite)
+                      Container(
+                        width: 24,
+                        height: 24,
+                        margin: const EdgeInsets.only(right: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.favorite,
+                          color: Colors.red,
+                          size: 16,
+                        ),
+                      ),
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (widget.isSelectable)
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: widget.isSelected ? 1.0 : 0.0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
               ),
-              if (_isLoadingThumbnail)
-                const Center(child: CircularProgressIndicator()),
-              if (widget.photo.isVideo)
-                Positioned(
-                  bottom: 8,
-                  right: 8,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
-                ),
-              if (widget.isSelectable)
-                AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: widget.isSelected ? 1.0 : 0.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-              if (widget.isSelectable)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+            if (widget.isSelectable)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color:
+                        widget.isSelected
+                            ? Theme.of(context).primaryColor
+                            : Colors.white.withOpacity(0.8),
+                    border: Border.all(
                       color:
                           widget.isSelected
                               ? Theme.of(context).primaryColor
-                              : Colors.white.withOpacity(0.8),
-                      border: Border.all(
-                        color:
-                            widget.isSelected
-                                ? Theme.of(context).primaryColor
-                                : Colors.grey,
-                        width: 2,
-                      ),
+                              : Colors.grey,
+                      width: 2,
                     ),
-                    child:
-                        widget.isSelected
-                            ? const Icon(
-                              Icons.check,
-                              size: 16,
-                              color: Colors.white,
-                            )
-                            : null,
                   ),
+                  child:
+                      widget.isSelected
+                          ? const Icon(
+                            Icons.check,
+                            size: 16,
+                            color: Colors.white,
+                          )
+                          : null,
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
