@@ -1,3 +1,5 @@
+import com.android.build.api.dsl.CommonExtension
+
 allprojects {
     repositories {
         google()

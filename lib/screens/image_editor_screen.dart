@@ -5,14 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:image_editor/image_editor.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:gallery_saver/gallery_saver.dart';
 import 'package:flutter/rendering.dart';
 
 class ImageEditorScreen extends StatefulWidget {
   final String imagePath;
 
-  const ImageEditorScreen({Key? key, required this.imagePath})
-    : super(key: key);
+  const ImageEditorScreen({super.key, required this.imagePath});
 
   @override
   State<ImageEditorScreen> createState() => _ImageEditorScreenState();
@@ -89,19 +88,21 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         if (Platform.isIOS) {
           try {
             // iOS에서는 갤러리에 직접 저장
-            final result = await ImageGallerySaver.saveImage(
-              capturedData,
-              quality: 100,
-              name:
-                  'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}',
-            );
+            final tempDir = await getTemporaryDirectory();
+            final fileName =
+                'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}';
+            final tempPath = path.join(tempDir.path, fileName);
+            final tempFile = File(tempPath);
+            await tempFile.writeAsBytes(capturedData);
 
-            if (result['isSuccess'] == true) {
+            final result = await GallerySaver.saveImage(tempPath);
+
+            if (result == true) {
               ScaffoldMessenger.of(
                 context,
               ).showSnackBar(const SnackBar(content: Text('갤러리에 저장되었습니다.')));
             } else {
-              throw Exception('갤러리 저장 실패: ${result['errorMessage']}');
+              throw Exception('갤러리 저장 실패');
             }
           } catch (e) {
             print('iOS 저장 실패 상세: $e');
@@ -120,19 +121,21 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           }
         } else {
           // Android에서는 갤러리에 저장
-          final result = await ImageGallerySaver.saveImage(
-            capturedData,
-            quality: 100,
-            name:
-                'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}',
-          );
+          final tempDir = await getTemporaryDirectory();
+          final fileName =
+              'edited_${DateTime.now().millisecondsSinceEpoch}_${path.basename(widget.imagePath)}';
+          final tempPath = path.join(tempDir.path, fileName);
+          final tempFile = File(tempPath);
+          await tempFile.writeAsBytes(capturedData);
 
-          if (result['isSuccess'] == true) {
+          final result = await GallerySaver.saveImage(tempPath);
+
+          if (result == true) {
             ScaffoldMessenger.of(
               context,
             ).showSnackBar(const SnackBar(content: Text('갤러리에 저장되었습니다.')));
           } else {
-            throw Exception('갤러리 저장 실패: ${result['errorMessage']}');
+            throw Exception('갤러리 저장 실패');
           }
         }
       }
