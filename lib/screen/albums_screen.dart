@@ -93,187 +93,72 @@ class _AlbumsScreenState extends State<AlbumsScreen>
           body:
               _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      children: [
-                        const TabBar(
-                          tabs: [Tab(text: '내 앨범'), Tab(text: '기기 앨범')],
-                        ),
-                        Expanded(
-                          child: TabBarView(
-                            children: [
-                              // 내 앨범 탭
-                              albums.isEmpty
-                                  ? const Center(
-                                    child: Text('앨범이 없습니다. 새 앨범을 만들어보세요!'),
-                                  )
-                                  : ListView.builder(
-                                    itemCount: albums.length,
-                                    itemBuilder: (context, index) {
-                                      final album = albums[index];
-                                      final albumPhotos = galleryModel
-                                          .getAlbumPhotos(album.id);
+                  : _deviceAlbums.isEmpty
+                  ? const Center(child: Text('기기 앨범이 없습니다.'))
+                  : ListView.builder(
+                    itemCount: _deviceAlbums.length,
+                    itemBuilder: (context, index) {
+                      final deviceAlbum = _deviceAlbums[index];
+                      final thumbnail = _albumThumbnails[deviceAlbum.id];
+                      final assetCount = deviceAlbum.assetCountAsync;
 
-                                      return ListTile(
-                                        leading:
-                                            albumPhotos.isNotEmpty
-                                                ? SizedBox(
-                                                  width: 50,
-                                                  height: 50,
-                                                  child: ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          4,
-                                                        ),
-                                                    child: Image(
-                                                      image: _getImageProvider(
-                                                        albumPhotos.first.path,
-                                                      ),
-                                                      fit: BoxFit.cover,
-                                                      width: 50,
-                                                      height: 50,
-                                                      errorBuilder: (
-                                                        context,
-                                                        error,
-                                                        stackTrace,
-                                                      ) {
-                                                        return Container(
-                                                          width: 50,
-                                                          height: 50,
-                                                          color: Colors.grey,
-                                                          child: const Icon(
-                                                            Icons.photo_album,
-                                                          ),
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                )
-                                                : Container(
-                                                  width: 50,
-                                                  height: 50,
-                                                  color: Colors.grey,
-                                                  child: const Icon(
-                                                    Icons.photo_album,
-                                                  ),
-                                                ),
-                                        title: Text(album.name),
-                                        subtitle: Text(
-                                          '${albumPhotos.length}개의 사진',
-                                        ),
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder:
-                                                  (context) => AlbumScreen(
-                                                    albumId: album.id,
-                                                  ),
-                                            ),
-                                          );
-                                        },
-                                        trailing: IconButton(
-                                          icon: const Icon(Icons.delete),
-                                          onPressed:
-                                              () => _showDeleteAlbumDialog(
-                                                context,
-                                                galleryModel,
-                                                album.id,
-                                                album.name,
-                                              ),
-                                        ),
-                                      );
-                                    },
+                      return ListTile(
+                        leading:
+                            thumbnail != null
+                                ? SizedBox(
+                                  width: 50,
+                                  height: 50,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image(
+                                      image: _getImageProvider(thumbnail.path),
+                                      fit: BoxFit.cover,
+                                      width: 50,
+                                      height: 50,
+                                      errorBuilder: (
+                                        context,
+                                        error,
+                                        stackTrace,
+                                      ) {
+                                        return Container(
+                                          width: 50,
+                                          height: 50,
+                                          color: Colors.grey,
+                                          child: const Icon(Icons.photo_album),
+                                        );
+                                      },
+                                    ),
                                   ),
-                              // 기기 앨범 탭
-                              _deviceAlbums.isEmpty
-                                  ? const Center(child: Text('기기 앨범이 없습니다.'))
-                                  : ListView.builder(
-                                    itemCount: _deviceAlbums.length,
-                                    itemBuilder: (context, index) {
-                                      final deviceAlbum = _deviceAlbums[index];
-                                      final thumbnail =
-                                          _albumThumbnails[deviceAlbum.id];
-                                      final assetCount =
-                                          deviceAlbum.assetCountAsync;
-
-                                      return ListTile(
-                                        leading:
-                                            thumbnail != null
-                                                ? SizedBox(
-                                                  width: 50,
-                                                  height: 50,
-                                                  child: ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          4,
-                                                        ),
-                                                    child: Image(
-                                                      image: _getImageProvider(
-                                                        thumbnail.path,
-                                                      ),
-                                                      fit: BoxFit.cover,
-                                                      width: 50,
-                                                      height: 50,
-                                                      errorBuilder: (
-                                                        context,
-                                                        error,
-                                                        stackTrace,
-                                                      ) {
-                                                        return Container(
-                                                          width: 50,
-                                                          height: 50,
-                                                          color: Colors.grey,
-                                                          child: const Icon(
-                                                            Icons.photo_album,
-                                                          ),
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                )
-                                                : Container(
-                                                  width: 50,
-                                                  height: 50,
-                                                  color: Colors.grey,
-                                                  child: const Icon(
-                                                    Icons.photo_album,
-                                                  ),
-                                                ),
-                                        title: Text(deviceAlbum.name),
-                                        subtitle: FutureBuilder<int>(
-                                          future: assetCount,
-                                          builder: (context, snapshot) {
-                                            if (snapshot.connectionState ==
-                                                ConnectionState.waiting) {
-                                              return const Text('로딩 중...');
-                                            }
-                                            return Text(
-                                              '${snapshot.data ?? 0}개의 사진',
-                                            );
-                                          },
-                                        ),
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder:
-                                                  (context) =>
-                                                      DeviceAlbumScreen(
-                                                        album: deviceAlbum,
-                                                      ),
-                                            ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
-                            ],
-                          ),
+                                )
+                                : Container(
+                                  width: 50,
+                                  height: 50,
+                                  color: Colors.grey,
+                                  child: const Icon(Icons.photo_album),
+                                ),
+                        title: Text(deviceAlbum.name),
+                        subtitle: FutureBuilder<int>(
+                          future: assetCount,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Text('로딩 중...');
+                            }
+                            return Text('${snapshot.data ?? 0}개의 사진');
+                          },
                         ),
-                      ],
-                    ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) =>
+                                      DeviceAlbumScreen(album: deviceAlbum),
+                            ),
+                          );
+                        },
+                      );
+                    },
                   ),
           floatingActionButton: FloatingActionButton(
             child: const Icon(Icons.add),

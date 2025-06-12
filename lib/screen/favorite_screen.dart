@@ -201,14 +201,14 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                       _exitSelectMode();
                     },
           ),
-          IconButton(
-            icon: const Icon(Icons.playlist_add),
-            tooltip: '앨범에 추가',
-            onPressed:
-                _selectedPhotoIds.isEmpty
-                    ? null
-                    : () => _addSelectedPhotosToAlbum(context),
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.playlist_add),
+          //   tooltip: '앨범에 추가',
+          //   onPressed:
+          //       _selectedPhotoIds.isEmpty
+          //           ? null
+          //           : () => _addSelectedPhotosToAlbum(context),
+          // ),
           IconButton(
             icon: const Icon(Icons.delete),
             tooltip: '삭제',

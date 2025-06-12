@@ -216,14 +216,14 @@ class HomeScreenState extends State<HomeScreen> {
                     ? null
                     : () => _toggleSelectedPhotosFavorite(context),
           ),
-          IconButton(
-            icon: const Icon(Icons.playlist_add),
-            tooltip: '앨범에 추가',
-            onPressed:
-                _selectedPhotoIds.isEmpty
-                    ? null
-                    : () => _addSelectedPhotosToAlbum(context),
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.playlist_add),
+          //   tooltip: '앨범에 추가',
+          //   onPressed:
+          //       _selectedPhotoIds.isEmpty
+          //           ? null
+          //           : () => _addSelectedPhotosToAlbum(context),
+          // ),
         ],
       );
     } else {

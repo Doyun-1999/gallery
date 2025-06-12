@@ -290,14 +290,14 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
                             listen: false,
                           ).toggleFavorite(currentPhoto.id),
                     ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.add_to_photos,
-                        color: Colors.white,
-                      ),
-                      onPressed:
-                          () => _showAddToAlbumDialog(context, currentPhoto.id),
-                    ),
+                    // IconButton(
+                    //   icon: const Icon(
+                    //     Icons.add_to_photos,
+                    //     color: Colors.white,
+                    //   ),
+                    //   onPressed:
+                    //       () => _showAddToAlbumDialog(context, currentPhoto.id),
+                    // ),
                     IconButton(
                       icon: const Icon(Icons.info, color: Colors.white),
                       onPressed:
@@ -415,14 +415,14 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
     return '$minutes:$seconds';
   }
 
-  void _showAddToAlbumDialog(BuildContext context, String photoId) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => AddToAlbumDialog(photoId: photoId),
-    );
-  }
+  // void _showAddToAlbumDialog(BuildContext context, String photoId) {
+  //   showModalBottomSheet(
+  //     context: context,
+  //     backgroundColor: Colors.transparent,
+  //     isScrollControlled: true,
+  //     builder: (context) => AddToAlbumDialog(photoId: photoId),
+  //   );
+  // }
 
   void _showDeleteDialog(BuildContext context, Photo photo) {
     showCupertinoDialog(
