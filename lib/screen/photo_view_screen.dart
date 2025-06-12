@@ -264,6 +264,19 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
                   ),
                   actions: [
                     IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.white),
+                      onPressed:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => ImageEditorScreen(
+                                    imagePath: currentPhoto.path,
+                                  ),
+                            ),
+                          ),
+                    ),
+                    IconButton(
                       icon: Icon(
                         currentPhoto.isFavorite
                             ? Icons.favorite
@@ -340,18 +353,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
             PhotoControlButton(
               icon: _currentMemo != null ? Icons.note : Icons.note_add,
               onPressed: () => _showMemoDialog(photo),
-            ),
-            const SizedBox(width: 16),
-            PhotoControlButton(
-              icon: Icons.edit,
-              onPressed:
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder:
-                          (context) => ImageEditorScreen(imagePath: photo.path),
-                    ),
-                  ),
             ),
           ],
         ),
