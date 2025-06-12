@@ -192,17 +192,23 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
             itemBuilder: (context, index) {
               final photo = photoList[index];
               if (photo.isVideo) {
-                return Container(
-                  color: Colors.black,
-                  child:
-                      _isVideoInitialized && _videoController != null
-                          ? Center(
-                            child: AspectRatio(
-                              aspectRatio: _videoController!.value.aspectRatio,
-                              child: VideoPlayer(_videoController!),
-                            ),
-                          )
-                          : const Center(child: CircularProgressIndicator()),
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _showControls = !_showControls);
+                  },
+                  child: Container(
+                    color: Colors.black,
+                    child:
+                        _isVideoInitialized && _videoController != null
+                            ? Center(
+                              child: AspectRatio(
+                                aspectRatio:
+                                    _videoController!.value.aspectRatio,
+                                child: VideoPlayer(_videoController!),
+                              ),
+                            )
+                            : const Center(child: CircularProgressIndicator()),
+                  ),
                 );
               }
               return PhotoView(
