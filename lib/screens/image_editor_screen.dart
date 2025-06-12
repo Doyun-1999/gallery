@@ -225,25 +225,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   }
 
   Future<void> _rotateImage() async {
-    try {
-      final option = ImageEditorOption();
-      option.addOption(const RotateOption(90));
-      final result = await ImageEditor.editFileImage(
-        file: _imageFile,
-        imageEditorOption: option,
-      );
-      if (result != null) {
-        setState(() {
-          _editedImageData = result;
-          _rotation = (_rotation + 90) % 360;
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('이미지 회전 실패: $e')));
-      print('회전 실패 상세: $e'); // 디버깅을 위한 로그
-    }
+    setState(() {
+      _rotation = (_rotation + 90) % 360;
+    });
   }
 
   void _toggleDrawing() {
@@ -358,15 +342,21 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
               Center(
                 child:
                     _editedImageData != null
-                        ? Image.memory(
-                          _editedImageData!,
-                          fit: BoxFit.contain,
-                          key: _imageKey,
+                        ? Transform.rotate(
+                          angle: _rotation * (3.141592653589793 / 180),
+                          child: Image.memory(
+                            _editedImageData!,
+                            fit: BoxFit.contain,
+                            key: _imageKey,
+                          ),
                         )
-                        : Image.file(
-                          _imageFile,
-                          fit: BoxFit.contain,
-                          key: _imageKey,
+                        : Transform.rotate(
+                          angle: _rotation * (3.141592653589793 / 180),
+                          child: Image.file(
+                            _imageFile,
+                            fit: BoxFit.contain,
+                            key: _imageKey,
+                          ),
                         ),
               ),
               if (_isDrawing)
