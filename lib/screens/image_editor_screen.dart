@@ -31,6 +31,174 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   final GlobalKey _captureKey = GlobalKey();
   ui.Image? _currentImage;
 
+  // 핸들 드래그 관련 상태 추가
+  int? _activeHandleIndex;
+  Offset? _dragStartPosition;
+  Rect? _initialCropRect;
+
+  // 크롭 영역 이동 관련 상태 추가
+  bool _isMovingCropArea = false;
+  Offset? _moveStartPosition;
+  Offset? _moveStartCropStart;
+  Offset? _moveStartCropEnd;
+
+  // 핸들 위치 계산 메서드
+  List<Offset> _getHandlePositions(Rect cropRect) {
+    return [
+      cropRect.topLeft, // 0: 좌상단
+      Offset(cropRect.left + cropRect.width / 2, cropRect.top), // 1: 상단 중앙
+      cropRect.topRight, // 2: 우상단
+      Offset(cropRect.right, cropRect.top + cropRect.height / 2), // 3: 우측 중앙
+      cropRect.bottomRight, // 4: 우하단
+      Offset(cropRect.left + cropRect.width / 2, cropRect.bottom), // 5: 하단 중앙
+      cropRect.bottomLeft, // 6: 좌하단
+      Offset(cropRect.left, cropRect.top + cropRect.height / 2), // 7: 좌측 중앙
+    ];
+  }
+
+  // 핸들 인덱스로부터 새로운 크롭 영역 계산
+  Rect _calculateNewCropRect(Offset currentPosition) {
+    if (_initialCropRect == null || _activeHandleIndex == null)
+      return Rect.zero;
+
+    final initialRect = _initialCropRect!;
+    final startPosition = _dragStartPosition!;
+    final delta = currentPosition - startPosition;
+
+    switch (_activeHandleIndex) {
+      case 0: // 좌상단
+        return Rect.fromPoints(
+          initialRect.topLeft + delta,
+          initialRect.bottomRight,
+        );
+      case 1: // 상단 중앙
+        return Rect.fromPoints(
+          Offset(initialRect.left, initialRect.top + delta.dy),
+          initialRect.bottomRight,
+        );
+      case 2: // 우상단
+        return Rect.fromPoints(
+          Offset(initialRect.left, initialRect.top + delta.dy),
+          Offset(initialRect.right + delta.dx, initialRect.bottom),
+        );
+      case 3: // 우측 중앙
+        return Rect.fromPoints(
+          initialRect.topLeft,
+          Offset(initialRect.right + delta.dx, initialRect.bottom),
+        );
+      case 4: // 우하단
+        return Rect.fromPoints(
+          initialRect.topLeft,
+          initialRect.bottomRight + delta,
+        );
+      case 5: // 하단 중앙
+        return Rect.fromPoints(
+          initialRect.topLeft,
+          Offset(initialRect.right, initialRect.bottom + delta.dy),
+        );
+      case 6: // 좌하단
+        return Rect.fromPoints(
+          Offset(initialRect.left + delta.dx, initialRect.top),
+          Offset(initialRect.left, initialRect.bottom + delta.dy),
+        );
+      case 7: // 좌측 중앙
+        return Rect.fromPoints(
+          Offset(initialRect.left + delta.dx, initialRect.top),
+          initialRect.bottomRight,
+        );
+      default:
+        return initialRect;
+    }
+  }
+
+  // 핸들 드래그 시작
+  void _onHandleDragStart(Offset position, int handleIndex) {
+    if (_cropStart == null || _cropEnd == null) return;
+
+    setState(() {
+      _activeHandleIndex = handleIndex;
+      _dragStartPosition = position;
+      _initialCropRect = Rect.fromPoints(_cropStart!, _cropEnd!);
+    });
+  }
+
+  // 핸들 드래그 중
+  void _onHandleDragUpdate(Offset position) {
+    if (_activeHandleIndex == null || _initialCropRect == null) return;
+
+    final newRect = _calculateNewCropRect(position);
+    setState(() {
+      _cropStart = newRect.topLeft;
+      _cropEnd = newRect.bottomRight;
+    });
+  }
+
+  // 핸들 드래그 종료
+  void _onHandleDragEnd() {
+    setState(() {
+      _activeHandleIndex = null;
+      _dragStartPosition = null;
+      _initialCropRect = null;
+    });
+  }
+
+  // 크롭 영역 내부 클릭 확인
+  bool _isInsideCropArea(Offset position) {
+    if (_cropStart == null || _cropEnd == null) return false;
+    final cropRect = Rect.fromPoints(_cropStart!, _cropEnd!);
+    return cropRect.contains(position);
+  }
+
+  // 핸들 영역 클릭 확인
+  bool _isHandleArea(Offset position) {
+    if (_cropStart == null || _cropEnd == null) return false;
+    final cropRect = Rect.fromPoints(_cropStart!, _cropEnd!);
+    final handles = _getHandlePositions(cropRect);
+    for (final handle in handles) {
+      if ((handle - position).distance < 20) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 크롭 영역 이동 시작
+  void _onCropAreaMoveStart(Offset position) {
+    if (_cropStart == null || _cropEnd == null) return;
+
+    setState(() {
+      _isMovingCropArea = true;
+      _moveStartPosition = position;
+      _moveStartCropStart = _cropStart;
+      _moveStartCropEnd = _cropEnd;
+    });
+  }
+
+  // 크롭 영역 이동 중
+  void _onCropAreaMoveUpdate(Offset position) {
+    if (!_isMovingCropArea ||
+        _moveStartPosition == null ||
+        _moveStartCropStart == null ||
+        _moveStartCropEnd == null)
+      return;
+
+    final delta = position - _moveStartPosition!;
+    setState(() {
+      _cropStart = _moveStartCropStart! + delta;
+      _cropEnd = _moveStartCropEnd! + delta;
+    });
+  }
+
+  // 크롭 영역 이동 종료
+  void _onCropAreaMoveEnd() {
+    setState(() {
+      _isMovingCropArea = false;
+      _moveStartPosition = null;
+      _moveStartCropStart = null;
+      _moveStartCropEnd = null;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -307,18 +475,45 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           onPanStart:
               _isCropping
                   ? (details) {
-                    setState(() {
-                      _cropStart = details.localPosition;
-                      _cropEnd = details.localPosition;
-                    });
+                    if (_cropStart == null) {
+                      // 새로운 크롭 영역 생성
+                      setState(() {
+                        _cropStart = details.localPosition;
+                        _cropEnd = details.localPosition;
+                      });
+                    } else {
+                      // 핸들 드래그 또는 크롭 영역 이동 확인
+                      if (_isHandleArea(details.localPosition)) {
+                        final cropRect = Rect.fromPoints(
+                          _cropStart!,
+                          _cropEnd!,
+                        );
+                        final handles = _getHandlePositions(cropRect);
+                        for (int i = 0; i < handles.length; i++) {
+                          if ((handles[i] - details.localPosition).distance <
+                              20) {
+                            _onHandleDragStart(details.localPosition, i);
+                            return;
+                          }
+                        }
+                      } else if (_isInsideCropArea(details.localPosition)) {
+                        _onCropAreaMoveStart(details.localPosition);
+                      }
+                    }
                   }
                   : null,
           onPanUpdate:
               _isCropping
                   ? (details) {
-                    setState(() {
-                      _cropEnd = details.localPosition;
-                    });
+                    if (_activeHandleIndex != null) {
+                      _onHandleDragUpdate(details.localPosition);
+                    } else if (_isMovingCropArea) {
+                      _onCropAreaMoveUpdate(details.localPosition);
+                    } else if (_cropStart != null) {
+                      setState(() {
+                        _cropEnd = details.localPosition;
+                      });
+                    }
                   }
                   : _isDrawing
                   ? (details) {
@@ -329,7 +524,13 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                   : null,
           onPanEnd:
               _isCropping
-                  ? null
+                  ? (details) {
+                    if (_activeHandleIndex != null) {
+                      _onHandleDragEnd();
+                    } else if (_isMovingCropArea) {
+                      _onCropAreaMoveEnd();
+                    }
+                  }
                   : _isDrawing
                   ? (details) {
                     setState(() {
@@ -409,26 +610,86 @@ class CropPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint =
+    final cropRect = Rect.fromPoints(start, end);
+
+    // 상단 오버레이
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, cropRect.top),
+      Paint()..color = Colors.black.withOpacity(0.5),
+    );
+
+    // 좌측 오버레이
+    canvas.drawRect(
+      Rect.fromLTWH(0, cropRect.top, cropRect.left, cropRect.height),
+      Paint()..color = Colors.black.withOpacity(0.5),
+    );
+
+    // 우측 오버레이
+    canvas.drawRect(
+      Rect.fromLTWH(
+        cropRect.right,
+        cropRect.top,
+        size.width - cropRect.right,
+        cropRect.height,
+      ),
+      Paint()..color = Colors.black.withOpacity(0.5),
+    );
+
+    // 하단 오버레이
+    canvas.drawRect(
+      Rect.fromLTWH(
+        0,
+        cropRect.bottom,
+        size.width,
+        size.height - cropRect.bottom,
+      ),
+      Paint()..color = Colors.black.withOpacity(0.5),
+    );
+
+    // 크롭 영역 테두리
+    final borderPaint =
         Paint()
-          ..color = Colors.white.withOpacity(0.5)
+          ..color = Colors.white
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.0;
 
-    final rect = Rect.fromPoints(start, end);
-    canvas.drawRect(rect, paint);
+    canvas.drawRect(cropRect, borderPaint);
 
-    // 모서리 핸들 그리기
+    // 핸들 그리기
     final handlePaint =
         Paint()
           ..color = Colors.white
           ..style = PaintingStyle.fill;
 
     const handleRadius = 8.0;
-    canvas.drawCircle(rect.topLeft, handleRadius, handlePaint);
-    canvas.drawCircle(rect.topRight, handleRadius, handlePaint);
-    canvas.drawCircle(rect.bottomLeft, handleRadius, handlePaint);
-    canvas.drawCircle(rect.bottomRight, handleRadius, handlePaint);
+
+    // 모서리 핸들
+    canvas.drawCircle(cropRect.topLeft, handleRadius, handlePaint);
+    canvas.drawCircle(cropRect.topRight, handleRadius, handlePaint);
+    canvas.drawCircle(cropRect.bottomLeft, handleRadius, handlePaint);
+    canvas.drawCircle(cropRect.bottomRight, handleRadius, handlePaint);
+
+    // 중간 핸들
+    canvas.drawCircle(
+      Offset(cropRect.left + cropRect.width / 2, cropRect.top),
+      handleRadius,
+      handlePaint,
+    );
+    canvas.drawCircle(
+      Offset(cropRect.left + cropRect.width / 2, cropRect.bottom),
+      handleRadius,
+      handlePaint,
+    );
+    canvas.drawCircle(
+      Offset(cropRect.left, cropRect.top + cropRect.height / 2),
+      handleRadius,
+      handlePaint,
+    );
+    canvas.drawCircle(
+      Offset(cropRect.right, cropRect.top + cropRect.height / 2),
+      handleRadius,
+      handlePaint,
+    );
   }
 
   @override
