@@ -451,14 +451,21 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
                       Navigator.of(context).pop();
                     } else if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('삭제에 실패했습니다.')),
+                        const SnackBar(
+                          content: Text('삭제에 실패했습니다. 권한을 확인해주세요.'),
+                          duration: Duration(seconds: 3),
+                        ),
                       );
                     }
                   } catch (e) {
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('삭제 중 오류 발생')),
+                        SnackBar(
+                          content: Text('삭제 중 오류 발생: ${e.toString()}'),
+                          duration: const Duration(seconds: 3),
+                        ),
                       );
+                    }
                   }
                 },
               ),
