@@ -334,24 +334,26 @@ class _MemoDialogState extends State<MemoDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.9),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildDragHandle(),
-          _buildHeader(),
-          _buildMemoInput(),
-          _buildMemoLengthIndicator(),
-          _buildVoiceMemoControls(),
-          _buildActionButtons(),
-        ],
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.9),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDragHandle(),
+            _buildHeader(),
+            _buildMemoInput(),
+            _buildMemoLengthIndicator(),
+            _buildVoiceMemoControls(),
+            _buildActionButtons(),
+          ],
+        ),
       ),
     );
   }

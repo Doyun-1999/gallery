@@ -342,16 +342,20 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PhotoMemoDisplay(
-          memo: _currentMemo,
-          voiceMemoPath: photo.voiceMemoPath,
-        ),
+        if (_currentMemo != null && _currentMemo!.isNotEmpty)
+          PhotoMemoDisplay(
+            memo: _currentMemo,
+            voiceMemoPath: photo.voiceMemoPath,
+          ),
         const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             PhotoControlButton(
-              icon: _currentMemo != null ? Icons.note : Icons.note_add,
+              icon:
+                  _currentMemo != null && _currentMemo!.isNotEmpty
+                      ? Icons.note
+                      : Icons.note_add,
               onPressed: () => _showMemoDialog(photo),
             ),
           ],
