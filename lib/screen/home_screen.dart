@@ -10,7 +10,6 @@ import 'package:gallery_memo/utils/permission_manager.dart';
 import 'package:gallery_memo/widget/album_dialogs.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

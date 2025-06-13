@@ -160,10 +160,6 @@ class _AlbumsScreenState extends State<AlbumsScreen>
                       );
                     },
                   ),
-          floatingActionButton: FloatingActionButton(
-            child: const Icon(Icons.add),
-            onPressed: () => _showCreateAlbumDialog(context, galleryModel),
-          ),
         );
       },
     );

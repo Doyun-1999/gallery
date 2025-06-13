@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
 import 'package:gallery_memo/model/photo_model.dart';
-import 'package:gallery_memo/screens/image_editor_screen.dart';
+import 'package:gallery_memo/screen/image_editor_screen.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';

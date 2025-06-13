@@ -150,10 +150,13 @@ class GalleryModel extends ChangeNotifier {
         final jsonString = await file.readAsString();
         final List<dynamic> jsonList = json.decode(jsonString);
         _photos = jsonList.map((json) => Photo.fromJson(json)).toList();
+        // 파일이 실제로 존재하지 않는 Photo는 제거
+        _photos.removeWhere((photo) => !File(photo.path).existsSync());
       }
     } catch (e) {
       // 사진 로드 실패 시 무시
     }
+    notifyListeners();
   }
 
   Future<void> _savePhotos() async {

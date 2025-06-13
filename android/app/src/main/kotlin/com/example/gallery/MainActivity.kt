@@ -1,4 +1,4 @@
-package com.vxx1564.gallerymemo
+package com.memogallery.memogallery
 
 import io.flutter.embedding.android.FlutterActivity
 
