@@ -303,6 +303,7 @@ class GalleryModel extends ChangeNotifier {
           ]);
           systemDeleteSuccess = result.isNotEmpty;
         } catch (e) {
+          debugPrint('PhotoManager 삭제 실패: $e');
           // PhotoManager 삭제 실패 시 파일 시스템 삭제 시도
         }
       }
@@ -312,13 +313,29 @@ class GalleryModel extends ChangeNotifier {
         try {
           final file = File(photo.path);
           if (await file.exists()) {
-            await file.delete();
-            systemDeleteSuccess = true;
+            try {
+              await file.delete();
+              systemDeleteSuccess = true;
+            } catch (e) {
+              debugPrint('파일 삭제 실패: $e');
+              // 안드로이드 10 이하에서는 MediaStore를 통한 삭제 시도
+              if (Platform.isAndroid) {
+                try {
+                  final uri = Uri.parse(photo.path);
+                  final result = await PhotoManager.editor.deleteWithIds([
+                    photo.asset?.id ?? '',
+                  ]);
+                  systemDeleteSuccess = result.isNotEmpty;
+                } catch (e) {
+                  debugPrint('MediaStore 삭제 실패: $e');
+                }
+              }
+            }
           } else {
             systemDeleteSuccess = true; // 파일이 이미 없는 경우는 성공으로 처리
           }
         } catch (e) {
-          // 파일 시스템 삭제 실패
+          debugPrint('파일 시스템 접근 실패: $e');
         }
       }
 
@@ -342,6 +359,7 @@ class GalleryModel extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      debugPrint('사진 삭제 중 오류 발생: $e');
       return false;
     }
   }
