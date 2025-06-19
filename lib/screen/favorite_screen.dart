@@ -27,6 +27,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   final Map<String, ImageProvider> _imageCache = {};
   static const int _maxCacheSize = 50;
   int _lastPreloadIndex = -1;
+  final Set<String> _errorPhotoIds = {};
 
   // --- 선택 모드 관련 상태 변수 추가 ---
   bool _isSelectMode = false;
@@ -115,10 +116,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Widget build(BuildContext context) {
     return Consumer<GalleryModel>(
       builder: (context, galleryModel, child) {
-        final favorites =
+        final favoritesSource =
             _showRecent
                 ? galleryModel.favoritesByRecent
                 : galleryModel.favorites;
+
+        final favorites =
+            favoritesSource
+                .where((p) => !_errorPhotoIds.contains(p.id))
+                .toList();
 
         if (favorites.isEmpty && !_isSelectMode) {
           return Scaffold(
@@ -169,6 +175,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   if (!_isSelectMode) {
                     _enterSelectMode();
                     _togglePhotoSelection(photo.id);
+                  }
+                },
+                onError: (photoId) {
+                  if (mounted) {
+                    setState(() {
+                      _errorPhotoIds.add(photoId);
+                    });
                   }
                 },
               );

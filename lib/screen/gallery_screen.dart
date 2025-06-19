@@ -27,7 +27,8 @@ class _GalleryScreenState extends State<GalleryScreen>
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   final Map<String, ImageProvider> _imageCache = {};
-  static const int _maxCacheSize = 100;
+  static const int _maxCacheSize = 50;
+  final Set<String> _errorPhotoIds = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -55,7 +56,7 @@ class _GalleryScreenState extends State<GalleryScreen>
       final file = File(path);
       final imageProvider = ResizeImage(
         FileImage(file),
-        width: 300,
+        width: 200,
         allowUpscaling: false,
         policy: ResizeImagePolicy.fit,
       );
@@ -96,7 +97,10 @@ class _GalleryScreenState extends State<GalleryScreen>
     super.build(context);
     return Consumer<GalleryModel>(
       builder: (context, galleryModel, child) {
-        final photos = galleryModel.photos;
+        final photos =
+            galleryModel.photos
+                .where((p) => !_errorPhotoIds.contains(p.id))
+                .toList();
 
         if (photos.isEmpty && !galleryModel.isLoading) {
           return const Center(child: Text('사진이 없습니다.'));
@@ -136,6 +140,13 @@ class _GalleryScreenState extends State<GalleryScreen>
                 onLongPress: () => widget.onPhotoLongPress(photo.id),
                 isSelectable: widget.isSelectMode,
                 isSelected: widget.selectedPhotoIds.contains(photo.id),
+                onError: (photoId) {
+                  if (mounted) {
+                    setState(() {
+                      _errorPhotoIds.add(photoId);
+                    });
+                  }
+                },
                 key: ValueKey(photo.id),
               );
             },

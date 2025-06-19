@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class GalleryModel extends ChangeNotifier {
   List<Photo> _photos = [];
@@ -281,14 +282,78 @@ class GalleryModel extends ChangeNotifier {
   Future<bool> deletePhoto(String photoId) async {
     try {
       final photo = photos.firstWhere((p) => p.id == photoId);
+      debugPrint('삭제할 사진 정보: id=${photo.id}, path=${photo.path}');
 
-      // Android 13 이상에서는 photos 권한만 필요
+      // Android 권한 체크
       if (Platform.isAndroid) {
-        final photosStatus = await Permission.photos.status;
-        if (photosStatus.isDenied) {
-          final photosResult = await Permission.photos.request();
-          if (photosResult.isDenied) {
-            return false;
+        debugPrint('안드로이드 권한 체크 시작...');
+
+        // Android 12 이상인지 확인
+        final isAndroid12OrHigher = await _isAndroid12OrHigher();
+        debugPrint('Android 12 이상 여부: $isAndroid12OrHigher');
+
+        if (isAndroid12OrHigher) {
+          // Android 13 이상에서는 READ_MEDIA_IMAGES 권한 사용
+          final isAndroid13OrHigher = await _isAndroid13OrHigher();
+          if (isAndroid13OrHigher) {
+            final mediaImagesStatus = await Permission.photos.status;
+            debugPrint('Media Images 권한 상태: $mediaImagesStatus');
+
+            if (mediaImagesStatus.isDenied) {
+              debugPrint('Media Images 권한 요청 시작...');
+              final mediaImagesResult = await Permission.photos.request();
+              debugPrint('Media Images 권한 요청 결과: $mediaImagesResult');
+              if (mediaImagesResult.isDenied) {
+                debugPrint('Media Images 권한이 거부됨');
+                return false;
+              }
+            }
+          } else {
+            // Android 12에서는 storage 권한 사용
+            final storageStatus = await Permission.storage.status;
+            debugPrint('Storage 권한 상태: $storageStatus');
+
+            if (storageStatus.isDenied) {
+              debugPrint('Storage 권한 요청 시작...');
+              final storageResult = await Permission.storage.request();
+              debugPrint('Storage 권한 요청 결과: $storageResult');
+              if (storageResult.isDenied) {
+                debugPrint('Storage 권한이 거부됨');
+                return false;
+              }
+            }
+          }
+
+          // Android 12 이상에서는 추가로 MANAGE_EXTERNAL_STORAGE 권한도 필요할 수 있음
+          final manageStorageStatus =
+              await Permission.manageExternalStorage.status;
+          debugPrint('Manage External Storage 권한 상태: $manageStorageStatus');
+
+          if (manageStorageStatus.isDenied) {
+            debugPrint('Manage External Storage 권한 요청 시작...');
+            final manageStorageResult =
+                await Permission.manageExternalStorage.request();
+            debugPrint(
+              'Manage External Storage 권한 요청 결과: $manageStorageResult',
+            );
+            if (manageStorageResult.isDenied) {
+              debugPrint('Manage External Storage 권한이 거부됨');
+              return false;
+            }
+          }
+        } else {
+          // Android 12 미만에서는 storage 권한도 필요
+          final storageStatus = await Permission.storage.status;
+          debugPrint('Storage 권한 상태: $storageStatus');
+
+          if (storageStatus.isDenied) {
+            debugPrint('Storage 권한 요청 시작...');
+            final storageResult = await Permission.storage.request();
+            debugPrint('Storage 권한 요청 결과: $storageResult');
+            if (storageResult.isDenied) {
+              debugPrint('Storage 권한이 거부됨');
+              return false;
+            }
           }
         }
       }
@@ -298,66 +363,44 @@ class GalleryModel extends ChangeNotifier {
       // 1. PhotoManager를 통한 삭제 시도
       if (photo.asset != null) {
         try {
+          debugPrint('PhotoManager를 통한 삭제 시도...');
           final List<String> result = await PhotoManager.editor.deleteWithIds([
             photo.asset!.id,
           ]);
           systemDeleteSuccess = result.isNotEmpty;
+          debugPrint(
+            'PhotoManager 삭제 결과: $systemDeleteSuccess, 삭제된 ID: $result',
+          );
         } catch (e) {
           debugPrint('PhotoManager 삭제 실패: $e');
-          // PhotoManager 삭제 실패 시 파일 시스템 삭제 시도
         }
       }
 
-      // 2. PhotoManager 삭제가 실패한 경우 파일 시스템 삭제 시도
+      // 2. 파일 시스템을 통한 삭제 시도
       if (!systemDeleteSuccess) {
         try {
+          debugPrint('파일 시스템을 통한 삭제 시도...');
           final file = File(photo.path);
           if (await file.exists()) {
-            try {
-              await file.delete();
-              systemDeleteSuccess = true;
-            } catch (e) {
-              debugPrint('파일 삭제 실패: $e');
-              // 안드로이드 10 이하에서는 MediaStore를 통한 삭제 시도
-              if (Platform.isAndroid) {
-                try {
-                  final uri = Uri.parse(photo.path);
-                  final result = await PhotoManager.editor.deleteWithIds([
-                    photo.asset?.id ?? '',
-                  ]);
-                  systemDeleteSuccess = result.isNotEmpty;
-                } catch (e) {
-                  debugPrint('MediaStore 삭제 실패: $e');
-                }
-              }
-            }
+            await file.delete();
+            systemDeleteSuccess = true;
+            debugPrint('파일 시스템 삭제 성공');
           } else {
-            systemDeleteSuccess = true; // 파일이 이미 없는 경우는 성공으로 처리
+            debugPrint('파일이 존재하지 않음');
           }
         } catch (e) {
-          debugPrint('파일 시스템 접근 실패: $e');
+          debugPrint('파일 시스템 삭제 실패: $e');
         }
       }
 
-      if (!systemDeleteSuccess) {
-        return false;
+      if (systemDeleteSuccess) {
+        _photos.removeWhere((p) => p.id == photoId);
+        await _savePhotos();
+        notifyListeners();
+        return true;
       }
 
-      // 3. 앱 내부 데이터 정리
-      _photos.removeWhere((p) => p.id == photoId);
-
-      // 4. 앨범에서도 제거
-      for (var album in _albums) {
-        album.photoIds.remove(photoId);
-      }
-
-      // 5. 즐겨찾기에서도 제거
-      _favorites.removeWhere((p) => p.id == photoId);
-
-      await _savePhotos();
-      await _saveAlbums();
-      notifyListeners();
-      return true;
+      return false;
     } catch (e) {
       debugPrint('사진 삭제 중 오류 발생: $e');
       return false;
@@ -815,5 +858,21 @@ class GalleryModel extends ChangeNotifier {
     return _photos
         .where((photo) => _selectedPhotoIds.contains(photo.id))
         .toList();
+  }
+
+  // Android 12 이상인지 확인하는 헬퍼 메서드
+  Future<bool> _isAndroid12OrHigher() async {
+    if (!Platform.isAndroid) return false;
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    return androidInfo.version.sdkInt >= 31; // Android 12는 SDK 31
+  }
+
+  // Android 13 이상인지 확인하는 헬퍼 메서드
+  Future<bool> _isAndroid13OrHigher() async {
+    if (!Platform.isAndroid) return false;
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    return androidInfo.version.sdkInt >= 33; // Android 13은 SDK 33
   }
 }

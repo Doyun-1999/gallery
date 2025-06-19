@@ -25,6 +25,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
   final int _maxCacheSize = 100;
   final ScrollController _scrollController = ScrollController();
   bool _isLoadingMore = false;
+  final Set<String> _errorPhotoIds = {};
 
   // --- 선택 모드 관련 상태 변수 추가 ---
   bool _isSelectMode = false;
@@ -169,7 +170,11 @@ class _AlbumScreenState extends State<AlbumScreen> {
 
         final photos =
             galleryModel.photos
-                .where((photo) => album.photoIds.contains(photo.id))
+                .where(
+                  (photo) =>
+                      album.photoIds.contains(photo.id) &&
+                      !_errorPhotoIds.contains(photo.id),
+                )
                 .toList();
 
         return Scaffold(
@@ -220,6 +225,13 @@ class _AlbumScreenState extends State<AlbumScreen> {
                   if (!_isSelectMode) {
                     _enterSelectMode();
                     _togglePhotoSelection(photo.id);
+                  }
+                },
+                onError: (photoId) {
+                  if (mounted) {
+                    setState(() {
+                      _errorPhotoIds.add(photoId);
+                    });
                   }
                 },
                 key: ValueKey(photo.id),

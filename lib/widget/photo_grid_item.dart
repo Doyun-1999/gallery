@@ -10,6 +10,7 @@ class PhotoGridItem extends StatefulWidget {
   final VoidCallback? onLongPress;
   final bool isSelectable;
   final bool isSelected;
+  final Function(String)? onError;
 
   const PhotoGridItem({
     super.key,
@@ -19,6 +20,7 @@ class PhotoGridItem extends StatefulWidget {
     this.onLongPress,
     this.isSelectable = false,
     this.isSelected = false,
+    this.onError,
   });
 
   @override
@@ -32,7 +34,7 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
   @override
   void initState() {
     super.initState();
-    if (widget.photo.isVideo && widget.photo.asset != null) {
+    if (widget.photo.isVideo) {
       _loadVideoThumbnail();
     }
   }
@@ -40,11 +42,12 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
   @override
   void didUpdateWidget(PhotoGridItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.photo.isVideo &&
-        widget.photo.asset != null &&
-        (oldWidget.photo.asset?.id != widget.photo.asset?.id ||
-            _thumbnailProvider == null)) {
-      _loadVideoThumbnail();
+    if (widget.photo.asset?.id != oldWidget.photo.asset?.id) {
+      _isLoadingThumbnail = false;
+      _thumbnailProvider = null;
+      if (widget.photo.isVideo) {
+        _loadVideoThumbnail();
+      }
     }
   }
 
@@ -62,23 +65,23 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
         const ThumbnailSize(200, 200),
         quality: 80,
       );
-      if (thumbnail != null && mounted) {
+      if (!mounted) return;
+
+      if (thumbnail != null) {
         setState(() {
           _thumbnailProvider = MemoryImage(thumbnail);
           _isLoadingThumbnail = false;
         });
       } else {
-        if (mounted) {
-          throw Exception('썸네일을 생성할 수 없습니다.');
-        }
+        throw Exception('썸네일을 생성할 수 없습니다.');
       }
     } catch (e) {
       debugPrint('동영상 썸네일 로드 중 오류 발생: $e');
       if (mounted) {
         setState(() {
-          _thumbnailProvider = const AssetImage('assets/logo/logo.png');
           _isLoadingThumbnail = false;
         });
+        widget.onError?.call(widget.photo.id);
       }
     }
   }
@@ -107,7 +110,8 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                           : widget.imageProvider,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.broken_image);
+                    widget.onError?.call(widget.photo.id);
+                    return const SizedBox.shrink();
                   },
                 ),
               ),

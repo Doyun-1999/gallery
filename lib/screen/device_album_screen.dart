@@ -25,6 +25,7 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
   bool _isLoadingMore = false;
   static const int _pageSize = 30;
   int _currentPage = 0;
+  final Set<String> _errorPhotoIds = {};
 
   @override
   void initState() {
@@ -143,9 +144,18 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
                   mainAxisSpacing: 4,
                   crossAxisSpacing: 4,
                 ),
-                itemCount: _photos.length + (_isLoadingMore ? 1 : 0),
+                itemCount:
+                    _photos
+                        .where((p) => !_errorPhotoIds.contains(p.id))
+                        .length +
+                    (_isLoadingMore ? 1 : 0),
                 itemBuilder: (context, index) {
-                  if (index >= _photos.length) {
+                  final displayPhotos =
+                      _photos
+                          .where((p) => !_errorPhotoIds.contains(p.id))
+                          .toList();
+
+                  if (index >= displayPhotos.length) {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(8.0),
@@ -154,7 +164,7 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
                     );
                   }
 
-                  final photo = _photos[index];
+                  final photo = displayPhotos[index];
                   return PhotoGridItem(
                     photo: photo,
                     imageProvider: _getImageProvider(photo.path),
@@ -164,6 +174,13 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
                     onLongPress: () {},
                     isSelectable: false,
                     isSelected: false,
+                    onError: (photoId) {
+                      if (mounted) {
+                        setState(() {
+                          _errorPhotoIds.add(photoId);
+                        });
+                      }
+                    },
                     key: ValueKey(photo.id),
                   );
                 },

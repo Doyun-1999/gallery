@@ -34,6 +34,7 @@ class VideosScreenState extends State<VideosScreen>
   int _currentPage = 0;
   bool _hasMoreVideos = true;
   final ScrollController _scrollController = ScrollController();
+  final Set<String> _errorVideoIds = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -224,7 +225,10 @@ class VideosScreenState extends State<VideosScreen>
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_videos.isEmpty) {
+    final displayVideos =
+        _videos.where((v) => !_errorVideoIds.contains(v.id)).toList();
+
+    if (displayVideos.isEmpty) {
       return const Center(
         child: Text('동영상이 없습니다', style: TextStyle(fontSize: 16)),
       );
@@ -238,47 +242,30 @@ class VideosScreenState extends State<VideosScreen>
         crossAxisSpacing: 8.0,
         mainAxisSpacing: 8.0,
       ),
-      itemCount: _videos.length + (_hasMoreVideos && _isLoading ? 1 : 0),
+      itemCount: displayVideos.length + (_hasMoreVideos && _isLoading ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == _videos.length) {
+        if (index == displayVideos.length) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final video = _videos[index];
-        return FutureBuilder<ImageProvider>(
-          future: _getVideoThumbnail(video),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.done &&
-                snapshot.hasData) {
-              return PhotoGridItem(
-                photo: video,
-                imageProvider: snapshot.data!,
-                onTap: () {
-                  if (widget.isSelectMode) {
-                    widget.onPhotoTap(video.id);
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) => PhotoViewScreen(
-                              photoId: video.id,
-                              source: PhotoViewSource.video,
-                            ),
-                      ),
-                    );
-                  }
-                },
-                onLongPress: () => widget.onPhotoLongPress(video.id),
-                isSelectable: widget.isSelectMode,
-                isSelected: widget.selectedPhotoIds.contains(video.id),
-              );
+        final video = displayVideos[index];
+        return PhotoGridItem(
+          photo: video,
+          imageProvider: const AssetImage(
+            'assets/logo/logo.png',
+          ), // Placeholder, will be replaced by thumbnail
+          onTap: () => widget.onPhotoTap(video.id),
+          onLongPress: () => widget.onPhotoLongPress(video.id),
+          isSelectable: widget.isSelectMode,
+          isSelected: widget.selectedPhotoIds.contains(video.id),
+          onError: (videoId) {
+            if (mounted) {
+              setState(() {
+                _errorVideoIds.add(videoId);
+              });
             }
-            return Container(
-              color: Colors.grey[300],
-              child: const Center(child: CircularProgressIndicator()),
-            );
           },
+          key: ValueKey(video.id),
         );
       },
     );
