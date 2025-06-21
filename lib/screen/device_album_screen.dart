@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
@@ -6,6 +7,7 @@ import 'package:gallery_memo/model/photo_model.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:gallery_memo/widget/photo_grid_item.dart';
+import 'package:gallery_memo/screen/photo_view_screen.dart';
 
 class DeviceAlbumScreen extends StatefulWidget {
   final AssetPathEntity album;
@@ -18,6 +20,7 @@ class DeviceAlbumScreen extends StatefulWidget {
 
 class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
   final Map<String, ImageProvider> _imageCache = {};
+  final Map<String, Uint8List?> _thumbnailCache = {};
   static const int _maxCacheSize = 100;
   List<Photo> _photos = [];
   bool _isLoading = true;
@@ -38,6 +41,7 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
   void dispose() {
     _scrollController.dispose();
     _imageCache.clear();
+    _thumbnailCache.clear();
     super.dispose();
   }
 
@@ -116,15 +120,31 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
         _imageCache.remove(_imageCache.keys.first);
       }
       final file = File(path);
-      final imageProvider = ResizeImage(
-        FileImage(file),
-        width: 200,
-        allowUpscaling: false,
-        policy: ResizeImagePolicy.fit,
-      );
+      final imageProvider = FileImage(file, scale: 0.5);
       _imageCache[path] = imageProvider;
     }
     return _imageCache[path]!;
+  }
+
+  Future<Uint8List?> _getThumbnailData(Photo photo) async {
+    if (!_thumbnailCache.containsKey(photo.id)) {
+      if (_thumbnailCache.length >= _maxCacheSize) {
+        _thumbnailCache.remove(_thumbnailCache.keys.first);
+      }
+
+      try {
+        if (photo.asset != null) {
+          final thumbnailData = await photo.asset!.thumbnailData;
+          _thumbnailCache[photo.id] = thumbnailData;
+        } else {
+          _thumbnailCache[photo.id] = null;
+        }
+      } catch (e) {
+        debugPrint('썸네일 로드 실패: ${photo.id} - $e');
+        _thumbnailCache[photo.id] = null;
+      }
+    }
+    return _thumbnailCache[photo.id];
   }
 
   @override
@@ -165,23 +185,55 @@ class _DeviceAlbumScreenState extends State<DeviceAlbumScreen> {
                   }
 
                   final photo = displayPhotos[index];
-                  return PhotoGridItem(
-                    photo: photo,
-                    imageProvider: _getImageProvider(photo.path),
-                    onTap: () {
-                      // TODO: 사진 상세 보기 구현
-                    },
-                    onLongPress: () {},
-                    isSelectable: false,
-                    isSelected: false,
-                    onError: (photoId) {
-                      if (mounted) {
-                        setState(() {
-                          _errorPhotoIds.add(photoId);
-                        });
+                  return FutureBuilder<Uint8List?>(
+                    future:
+                        photo.isVideo
+                            ? _getThumbnailData(photo)
+                            : Future.value(null),
+                    builder: (context, snapshot) {
+                      ImageProvider imageProvider;
+
+                      if (photo.isVideo &&
+                          snapshot.hasData &&
+                          snapshot.data != null) {
+                        // 동영상인 경우 썸네일 데이터 사용
+                        imageProvider = MemoryImage(snapshot.data!);
+                      } else {
+                        // 이미지인 경우 파일 경로 사용
+                        imageProvider = _getImageProvider(photo.path);
                       }
+
+                      return PhotoGridItem(
+                        photo: photo,
+                        imageProvider: imageProvider,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => PhotoViewScreen(
+                                    photoId: photo.id,
+                                    source: PhotoViewSource.video,
+                                    deviceAlbum: widget.album,
+                                  ),
+                            ),
+                          );
+                        },
+                        onLongPress: () {},
+                        isSelectable: false,
+                        isSelected: false,
+                        onError: (photoId) {
+                          if (mounted) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              setState(() {
+                                _errorPhotoIds.add(photoId);
+                              });
+                            });
+                          }
+                        },
+                        key: ValueKey(photo.id),
+                      );
                     },
-                    key: ValueKey(photo.id),
                   );
                 },
               ),

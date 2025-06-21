@@ -151,8 +151,19 @@ class GalleryModel extends ChangeNotifier {
         final jsonString = await file.readAsString();
         final List<dynamic> jsonList = json.decode(jsonString);
         _photos = jsonList.map((json) => Photo.fromJson(json)).toList();
-        // 파일이 실제로 존재하지 않는 Photo는 제거
-        _photos.removeWhere((photo) => !File(photo.path).existsSync());
+
+        // 실제 파일이 존재하고, 이미지/비디오 파일인지 확인
+        _photos.removeWhere((photo) {
+          // 파일이 존재하지 않으면 제거
+          if (!File(photo.path).existsSync()) return true;
+
+          // 음성 녹음 파일 확장자 체크
+          final extension = photo.path.toLowerCase().split('.').last;
+          final audioExtensions = ['m4a', 'wav', 'mp3', 'aac', 'ogg', 'flac'];
+          if (audioExtensions.contains(extension)) return true;
+
+          return false;
+        });
       }
     } catch (e) {
       // 사진 로드 실패 시 무시
@@ -163,7 +174,17 @@ class GalleryModel extends ChangeNotifier {
   Future<void> _savePhotos() async {
     final directory = await getApplicationDocumentsDirectory();
     final photosFile = File(path.join(directory.path, 'photos.json'));
-    final jsonList = _photos.map((photo) => photo.toJson()).toList();
+
+    // 이미지/비디오 파일만 필터링하여 저장
+    final validPhotos =
+        _photos.where((photo) {
+          // 음성 녹음 파일 확장자 체크
+          final extension = photo.path.toLowerCase().split('.').last;
+          final audioExtensions = ['m4a', 'wav', 'mp3', 'aac', 'ogg', 'flac'];
+          return !audioExtensions.contains(extension);
+        }).toList();
+
+    final jsonList = validPhotos.map((photo) => photo.toJson()).toList();
     await photosFile.writeAsString(json.encode(jsonList));
   }
 
@@ -587,19 +608,53 @@ class GalleryModel extends ChangeNotifier {
 
       final List<Photo> newPhotos = [];
       for (final asset in initialPhotos) {
-        final file = await asset.file;
-        if (file != null) {
-          final photo = Photo(
-            id: asset.id,
-            path: file.path,
-            date: asset.createDateTime,
-            isFavorite: favoriteIds.contains(asset.id),
-            memo: memoBackup[asset.id],
-            voiceMemoPath: voiceMemoBackup[asset.id],
-            asset: asset,
-            isVideo: asset.type == AssetType.video,
-          );
-          newPhotos.add(photo);
+        try {
+          final file = await asset.file;
+          if (file != null && await file.exists()) {
+            // 파일 확장자 체크하여 이미지/비디오 파일만 허용
+            final extension = file.path.toLowerCase().split('.').last;
+            final imageExtensions = [
+              'jpg',
+              'jpeg',
+              'png',
+              'gif',
+              'bmp',
+              'webp',
+              'heic',
+              'heif',
+            ];
+            final videoExtensions = [
+              'mp4',
+              'avi',
+              'mov',
+              'wmv',
+              'flv',
+              'webm',
+              'mkv',
+              '3gp',
+            ];
+            final validExtensions = [...imageExtensions, ...videoExtensions];
+
+            if (!validExtensions.contains(extension)) {
+              debugPrint('지원하지 않는 파일 형식 제외: ${file.path}');
+              continue;
+            }
+
+            final photo = Photo(
+              id: asset.id,
+              path: file.path,
+              date: asset.createDateTime,
+              isFavorite: favoriteIds.contains(asset.id),
+              memo: memoBackup[asset.id],
+              voiceMemoPath: voiceMemoBackup[asset.id],
+              asset: asset,
+              isVideo: asset.type == AssetType.video,
+            );
+            newPhotos.add(photo);
+          }
+        } catch (e) {
+          debugPrint('사진 로딩 중 오류 발생: ${asset.id} - $e');
+          continue;
         }
       }
 
@@ -642,7 +697,7 @@ class GalleryModel extends ChangeNotifier {
       // 페이지 크기를 늘려서 더 많은 사진을 한 번에 로드
       final List<AssetEntity> morePhotos = await albums[0].getAssetListPaged(
         page: _currentPage,
-        size: 100, // 페이지 크기를 100으로 증가
+        size: 30,
       );
 
       if (morePhotos.isEmpty) {
@@ -672,20 +727,58 @@ class GalleryModel extends ChangeNotifier {
       for (final asset in morePhotos) {
         if (loadedIds.contains(asset.id)) continue;
 
-        final file = await asset.file;
-        if (file != null) {
-          final photo = Photo(
-            id: asset.id,
-            path: file.path,
-            date: asset.createDateTime,
-            isFavorite: favoriteBackup[asset.id] ?? false,
-            memo: memoBackup[asset.id],
-            voiceMemoPath: voiceMemoBackup[asset.id],
-            asset: asset,
-            isVideo: asset.type == AssetType.video,
-          );
-          _photos.add(photo);
-          hasNewPhotos = true;
+        try {
+          final file = await asset.file;
+          if (file != null && await file.exists()) {
+            // 파일 확장자 체크하여 이미지/비디오 파일만 허용
+            final extension = file.path.toLowerCase().split('.').last;
+            final imageExtensions = [
+              'jpg',
+              'jpeg',
+              'png',
+              'gif',
+              'bmp',
+              'webp',
+              'heic',
+              'heif',
+            ];
+            final videoExtensions = [
+              'mp4',
+              'avi',
+              'mov',
+              'wmv',
+              'flv',
+              'webm',
+              'mkv',
+              '3gp',
+            ];
+            final validExtensions = [...imageExtensions, ...videoExtensions];
+
+            if (!validExtensions.contains(extension)) {
+              debugPrint('지원하지 않는 파일 형식 제외: ${file.path}');
+              continue;
+            }
+
+            final isVideo = asset.type == AssetType.video;
+            debugPrint('로드된 파일: ${file.path}, isVideo: $isVideo');
+
+            final photo = Photo(
+              id: asset.id,
+              path: file.path,
+              date: asset.createDateTime,
+              isFavorite: favoriteBackup[asset.id] ?? false,
+              memo: memoBackup[asset.id],
+              voiceMemoPath: voiceMemoBackup[asset.id],
+              asset: asset,
+              isVideo: isVideo,
+            );
+            _photos.add(photo);
+            hasNewPhotos = true;
+          }
+        } catch (e) {
+          debugPrint('사진 로딩 중 오류 발생: ${asset.id} - $e');
+          // 개별 사진 로딩 실패는 무시하고 계속 진행
+          continue;
         }
       }
 
@@ -700,13 +793,12 @@ class GalleryModel extends ChangeNotifier {
           _isLoading = false;
           notifyListeners();
           await Future.delayed(const Duration(milliseconds: 100)); // 약간의 지연 추가
-          await loadMorePhotos(); // 재귀적으로 더 로드
+          // await loadMorePhotos(); // 재귀적으로 더 로드
         } else {
           _isLoading = false;
           notifyListeners();
         }
       } else {
-        // 더 이상 새로운 사진이 없으면 페이지를 -1로 설정
         _currentPage = -1;
         _isLoading = false;
         notifyListeners();
@@ -743,13 +835,67 @@ class GalleryModel extends ChangeNotifier {
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
         type: RequestType.all,
       );
+
       debugPrint('PhotoManager.getAssetPathList 결과: ${albums.length}개의 앨범');
 
+      // 이미지/동영상 파일만 포함된 앨범만 필터링
+      final List<AssetPathEntity> validAlbums = [];
+      for (final album in albums) {
+        try {
+          // 각 앨범의 첫 번째 asset을 확인하여 이미지/동영상인지 체크
+          final assets = await album.getAssetListPaged(page: 0, size: 1);
+          if (assets.isNotEmpty) {
+            final asset = assets.first;
+            final file = await asset.file;
+            if (file != null && await file.exists()) {
+              // 파일 확장자 체크
+              final extension = file.path.toLowerCase().split('.').last;
+              final imageExtensions = [
+                'jpg',
+                'jpeg',
+                'png',
+                'gif',
+                'bmp',
+                'webp',
+                'heic',
+                'heif',
+              ];
+              final videoExtensions = [
+                'mp4',
+                'avi',
+                'mov',
+                'wmv',
+                'flv',
+                'webm',
+                'mkv',
+                '3gp',
+              ];
+              final validExtensions = [...imageExtensions, ...videoExtensions];
+
+              if (validExtensions.contains(extension)) {
+                validAlbums.add(album);
+                debugPrint('유효한 앨범 추가: ${album.name}');
+              } else {
+                debugPrint(
+                  '지원하지 않는 파일 형식이 포함된 앨범 제외: ${album.name} (${file.path})',
+                );
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('앨범 검증 중 오류 발생: ${album.name} - $e');
+          // 오류가 발생한 앨범은 제외
+          continue;
+        }
+      }
+
+      debugPrint('필터링 후 유효한 앨범 수: ${validAlbums.length}개');
+
       // 캐시 업데이트
-      _cachedDeviceAlbums = albums;
+      _cachedDeviceAlbums = validAlbums;
       _lastDeviceAlbumsLoadTime = DateTime.now();
 
-      return albums;
+      return validAlbums;
     } catch (e) {
       debugPrint('기기 앨범 로드 중 오류 발생: $e');
       return _cachedDeviceAlbums ?? [];
@@ -770,16 +916,51 @@ class GalleryModel extends ChangeNotifier {
 
       final List<Photo> photos = [];
       for (final asset in assets) {
-        final file = await asset.file;
-        if (file != null) {
-          final photo = Photo(
-            id: asset.id,
-            path: file.path,
-            date: asset.createDateTime,
-            asset: asset,
-            isVideo: asset.type == AssetType.video,
-          );
-          photos.add(photo);
+        try {
+          final file = await asset.file;
+          if (file != null && await file.exists()) {
+            // 파일 확장자 체크하여 이미지/비디오 파일만 허용
+            final extension = file.path.toLowerCase().split('.').last;
+            final imageExtensions = [
+              'jpg',
+              'jpeg',
+              'png',
+              'gif',
+              'bmp',
+              'webp',
+              'heic',
+              'heif',
+            ];
+            final videoExtensions = [
+              'mp4',
+              'avi',
+              'mov',
+              'wmv',
+              'flv',
+              'webm',
+              'mkv',
+              '3gp',
+            ];
+            final validExtensions = [...imageExtensions, ...videoExtensions];
+
+            if (!validExtensions.contains(extension)) {
+              debugPrint('지원하지 않는 파일 형식 제외: ${file.path}');
+              continue;
+            }
+
+            final photo = Photo(
+              id: asset.id,
+              path: file.path,
+              date: asset.createDateTime,
+              asset: asset,
+              isVideo: asset.type == AssetType.video,
+            );
+            photos.add(photo);
+          }
+        } catch (e) {
+          debugPrint('앨범 사진 로딩 중 오류 발생: ${asset.id} - $e');
+          // 개별 사진 로딩 실패는 무시하고 계속 진행
+          continue;
         }
       }
       return photos;
@@ -806,21 +987,57 @@ class GalleryModel extends ChangeNotifier {
       if (assets.isEmpty) return null;
 
       final asset = assets.first;
-      final file = await asset.file;
-      if (file == null) return null;
+      try {
+        final file = await asset.file;
+        if (file == null || !await file.exists()) return null;
 
-      final photo = Photo(
-        id: asset.id,
-        path: file.path,
-        date: asset.createDateTime,
-        asset: asset,
-        isVideo: asset.type == AssetType.video,
-      );
+        // 파일 확장자 체크하여 이미지/비디오 파일만 허용
+        final extension = file.path.toLowerCase().split('.').last;
+        final imageExtensions = [
+          'jpg',
+          'jpeg',
+          'png',
+          'gif',
+          'bmp',
+          'webp',
+          'heic',
+          'heif',
+        ];
+        final videoExtensions = [
+          'mp4',
+          'avi',
+          'mov',
+          'wmv',
+          'flv',
+          'webm',
+          'mkv',
+          '3gp',
+        ];
+        final validExtensions = [...imageExtensions, ...videoExtensions];
 
-      // 썸네일 캐시에 저장
-      _cachedThumbnails[album.id] = photo;
+        if (!validExtensions.contains(extension)) {
+          debugPrint('지원하지 않는 파일 형식 제외 (썸네일): ${file.path}');
+          return null;
+        }
 
-      return photo;
+        final isVideo = asset.type == AssetType.video;
+
+        final photo = Photo(
+          id: asset.id,
+          path: file.path,
+          date: asset.createDateTime,
+          asset: asset,
+          isVideo: isVideo,
+        );
+
+        // 썸네일 캐시에 저장
+        _cachedThumbnails[album.id] = photo;
+
+        return photo;
+      } catch (e) {
+        debugPrint('앨범 썸네일 로드 중 오류 발생: ${asset.id} - $e');
+        return null;
+      }
     } catch (e) {
       debugPrint('앨범 썸네일 로드 중 오류 발생: $e');
       return null;

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
@@ -18,6 +19,7 @@ class AlbumsScreen extends StatefulWidget {
 class _AlbumsScreenState extends State<AlbumsScreen>
     with AutomaticKeepAliveClientMixin {
   final Map<String, ImageProvider> _imageCache = {};
+  final Map<String, Uint8List?> _thumbnailCache = {};
   static const int _maxCacheSize = 50;
   List<AssetPathEntity> _deviceAlbums = [];
   final Map<String, Photo?> _albumThumbnails = {};
@@ -73,14 +75,48 @@ class _AlbumsScreenState extends State<AlbumsScreen>
     }
   }
 
-  ImageProvider _getImageProvider(String path) {
-    if (!_imageCache.containsKey(path)) {
-      if (_imageCache.length >= _maxCacheSize) {
-        _imageCache.remove(_imageCache.keys.first);
-      }
-      _imageCache[path] = FileImage(File(path));
+  Future<ImageProvider> _getImageProvider(Photo photo) async {
+    final cacheKey = photo.id;
+
+    if (_imageCache.containsKey(cacheKey)) {
+      return _imageCache[cacheKey]!;
     }
-    return _imageCache[path]!;
+
+    // 캐시 크기 제한 확인
+    if (_imageCache.length >= _maxCacheSize) {
+      _imageCache.remove(_imageCache.keys.first);
+    }
+
+    ImageProvider imageProvider;
+
+    if (photo.isVideo) {
+      // 영상인 경우 썸네일 생성
+      try {
+        if (photo.asset != null) {
+          final thumbnail = await photo.asset!.thumbnailDataWithSize(
+            const ThumbnailSize(200, 200),
+            quality: 80,
+          );
+          if (thumbnail != null) {
+            imageProvider = MemoryImage(thumbnail);
+          } else {
+            // 썸네일 생성 실패 시 기본 아이콘
+            imageProvider = const AssetImage('assets/logo/logo.png');
+          }
+        } else {
+          imageProvider = const AssetImage('assets/logo/logo.png');
+        }
+      } catch (e) {
+        debugPrint('영상 썸네일 생성 중 오류 발생: $e');
+        imageProvider = const AssetImage('assets/logo/logo.png');
+      }
+    } else {
+      // 이미지인 경우 FileImage 사용
+      imageProvider = FileImage(File(photo.path));
+    }
+
+    _imageCache[cacheKey] = imageProvider;
+    return imageProvider;
   }
 
   @override
@@ -110,21 +146,59 @@ class _AlbumsScreenState extends State<AlbumsScreen>
                                   height: 50,
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(4),
-                                    child: Image(
-                                      image: _getImageProvider(thumbnail.path),
-                                      fit: BoxFit.cover,
-                                      width: 50,
-                                      height: 50,
-                                      errorBuilder: (
-                                        context,
-                                        error,
-                                        stackTrace,
-                                      ) {
-                                        return Container(
+                                    child: FutureBuilder<ImageProvider>(
+                                      future: _getImageProvider(thumbnail),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.connectionState ==
+                                            ConnectionState.waiting) {
+                                          return Container(
+                                            width: 50,
+                                            height: 50,
+                                            color: Colors.grey[300],
+                                            child: const Center(
+                                              child: SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              ),
+                                            ),
+                                          );
+                                        }
+
+                                        if (snapshot.hasError ||
+                                            !snapshot.hasData) {
+                                          return Container(
+                                            width: 50,
+                                            height: 50,
+                                            color: Colors.grey,
+                                            child: const Icon(
+                                              Icons.photo_album,
+                                            ),
+                                          );
+                                        }
+
+                                        return Image(
+                                          image: snapshot.data!,
+                                          fit: BoxFit.cover,
                                           width: 50,
                                           height: 50,
-                                          color: Colors.grey,
-                                          child: const Icon(Icons.photo_album),
+                                          errorBuilder: (
+                                            context,
+                                            error,
+                                            stackTrace,
+                                          ) {
+                                            return Container(
+                                              width: 50,
+                                              height: 50,
+                                              color: Colors.grey,
+                                              child: const Icon(
+                                                Icons.photo_album,
+                                              ),
+                                            );
+                                          },
                                         );
                                       },
                                     ),

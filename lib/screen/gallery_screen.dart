@@ -142,8 +142,10 @@ class _GalleryScreenState extends State<GalleryScreen>
                 isSelected: widget.selectedPhotoIds.contains(photo.id),
                 onError: (photoId) {
                   if (mounted) {
-                    setState(() {
-                      _errorPhotoIds.add(photoId);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      setState(() {
+                        _errorPhotoIds.add(photoId);
+                      });
                     });
                   }
                 },

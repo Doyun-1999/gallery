@@ -101,12 +101,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
       }
 
       final file = File(path);
-      final imageProvider = ResizeImage(
-        FileImage(file),
-        width: 200,
-        allowUpscaling: false,
-        policy: ResizeImagePolicy.fit,
-      );
+      final imageProvider = FileImage(file, scale: 0.5);
       _imageCache[path] = imageProvider;
     }
     return _imageCache[path]!;
@@ -229,8 +224,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 },
                 onError: (photoId) {
                   if (mounted) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
                     setState(() {
                       _errorPhotoIds.add(photoId);
+                      });
                     });
                   }
                 },

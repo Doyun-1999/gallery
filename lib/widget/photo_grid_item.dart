@@ -103,21 +103,95 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8.0),
-                child: Image(
-                  image:
-                      widget.photo.isVideo && _thumbnailProvider != null
-                          ? _thumbnailProvider!
-                          : widget.imageProvider,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    widget.onError?.call(widget.photo.id);
-                    return const SizedBox.shrink();
-                  },
-                ),
+                child:
+                    widget.photo.isVideo
+                        ? (_thumbnailProvider != null
+                            ? Image(
+                              image: _thumbnailProvider!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                debugPrint(
+                                  '이미지 로딩 오류: ${widget.photo.path} - $error',
+                                );
+                                widget.onError?.call(widget.photo.id);
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[300],
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      color: Colors.grey,
+                                      size: 32,
+                                    ),
+                                  ),
+                                );
+                              },
+                              loadingBuilder: (
+                                context,
+                                child,
+                                loadingProgress,
+                              ) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              },
+                            )
+                            : Container(
+                              color: Colors.black12,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.videocam,
+                                  color: Colors.grey,
+                                  size: 32,
+                                ),
+                              ),
+                            ))
+                        : Image(
+                          image: widget.imageProvider,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            debugPrint(
+                              '이미지 로딩 오류: ${widget.photo.path} - $error',
+                            );
+                            widget.onError?.call(widget.photo.id);
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.broken_image,
+                                  color: Colors.grey,
+                                  size: 32,
+                                ),
+                              ),
+                            );
+                          },
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey[200],
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          },
+                        ),
               ),
             ),
-            if (_isLoadingThumbnail)
-              const Center(child: CircularProgressIndicator()),
             if (widget.photo.isVideo)
               Positioned(
                 bottom: 8,
@@ -134,6 +208,38 @@ class _PhotoGridItemState extends State<PhotoGridItem> {
                     color: Colors.white,
                     size: 16,
                   ),
+                ),
+              ),
+            if (widget.photo.memo != null && widget.photo.memo!.isNotEmpty)
+              Positioned(
+                bottom: 8,
+                left: 8,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.note, color: Colors.white, size: 16),
+                ),
+              ),
+            if (widget.photo.voiceMemoPath != null &&
+                widget.photo.voiceMemoPath!.isNotEmpty)
+              Positioned(
+                bottom:
+                    widget.photo.memo != null && widget.photo.memo!.isNotEmpty
+                        ? 36
+                        : 8,
+                left: 8,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.mic, color: Colors.white, size: 16),
                 ),
               ),
             if (widget.isSelectable)

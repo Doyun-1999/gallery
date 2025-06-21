@@ -9,23 +9,24 @@ import 'dart:io';
 import 'dart:async';
 import 'package:gallery_memo/widget/memo_dialog.dart';
 import 'package:gallery_memo/widget/photo_info_dialog.dart';
-import 'package:gallery_memo/widget/delete_dialog.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:gallery_memo/widget/photo_control_button.dart';
 import 'package:gallery_memo/widget/photo_memo_display.dart';
-import 'package:gallery_memo/widget/album_dialogs.dart';
 import 'package:video_player/video_player.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 class PhotoViewScreen extends StatefulWidget {
   final String photoId;
   final PhotoViewSource source;
   final String? albumId;
+  final AssetPathEntity? deviceAlbum;
 
   const PhotoViewScreen({
     super.key,
     required this.photoId,
     this.source = PhotoViewSource.gallery,
     this.albumId,
+    this.deviceAlbum,
   });
 
   @override
@@ -47,6 +48,10 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
   // 제스처 충돌 해결을 위한 상태 변수
   bool _isZooming = false;
 
+  // 기기 앨범 사진들을 위한 상태 변수
+  var _deviceAlbumPhotos = <Photo>[];
+  var _isLoadingDevicePhotos = false;
+
   @override
   void initState() {
     super.initState();
@@ -54,18 +59,27 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-      final photoList = _getPhotoList(galleryModel);
-      final initialIndex = photoList.indexWhere((p) => p.id == widget.photoId);
 
-      if (initialIndex != -1) {
-        setState(() {
-          _pageController = PageController(initialPage: initialIndex);
-          _loadDataForCurrentPhoto(galleryModel, photoList[initialIndex]);
-          _isLoading = false;
-        });
+      if (widget.deviceAlbum != null) {
+        // 기기 앨범인 경우 사진들을 로드
+        _loadDeviceAlbumPhotos();
       } else {
-        if (Navigator.canPop(context)) Navigator.pop(context);
+        // 일반 앨범인 경우 기존 로직 사용
+        final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+        final photoList = _getPhotoList(galleryModel);
+        final initialIndex = photoList.indexWhere(
+          (p) => p.id == widget.photoId,
+        );
+
+        if (initialIndex != -1) {
+          setState(() {
+            _pageController = PageController(initialPage: initialIndex);
+            _loadDataForCurrentPhoto(galleryModel, photoList[initialIndex]);
+            _isLoading = false;
+          });
+        } else {
+          if (Navigator.canPop(context)) Navigator.pop(context);
+        }
       }
     });
 
@@ -111,6 +125,13 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
       case PhotoViewSource.album:
         if (widget.albumId == null) return [];
         return galleryModel.getAlbumPhotos(widget.albumId!);
+      case PhotoViewSource.video:
+        // 기기 앨범의 경우 직접 처리
+        if (widget.deviceAlbum != null) {
+          // 현재는 빈 리스트를 반환하고, 나중에 비동기적으로 로드
+          return [];
+        }
+        return [];
       default:
         return galleryModel.photos;
     }
@@ -144,7 +165,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading || _isLoadingDevicePhotos) {
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(child: CircularProgressIndicator()),
@@ -152,7 +173,10 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
     }
 
     final galleryModel = Provider.of<GalleryModel>(context);
-    final photoList = _getPhotoList(galleryModel);
+    final photoList =
+        widget.deviceAlbum != null
+            ? _deviceAlbumPhotos
+            : _getPhotoList(galleryModel);
 
     if (photoList.isEmpty) {
       return Scaffold(
@@ -188,6 +212,18 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
             onPageChanged: (index) {
               setState(() => _currentPhotoId = photoList[index].id);
               _loadDataForCurrentPhoto(galleryModel, photoList[index]);
+
+              // 마지막 5개 항목에 도달하면 더 많은 사진 로드
+              if (index >= photoList.length - 5) {
+                final galleryModelProvider = Provider.of<GalleryModel>(
+                  context,
+                  listen: false,
+                );
+                if (galleryModelProvider.hasMore &&
+                    !galleryModelProvider.isLoading) {
+                  galleryModelProvider.loadMorePhotos();
+                }
+              }
             },
             itemBuilder: (context, index) {
               final photo = photoList[index];
@@ -488,5 +524,52 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
             child: PhotoInfoDialog(photo: photo),
           ),
     );
+  }
+
+  Future<void> _loadDeviceAlbumPhotos() async {
+    if (widget.deviceAlbum == null) return;
+
+    setState(() {
+      _isLoadingDevicePhotos = true;
+    });
+
+    try {
+      final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+      final photos = await galleryModel.getDeviceAlbumPhotos(
+        widget.deviceAlbum!,
+      );
+
+      if (mounted) {
+        setState(() {
+          _deviceAlbumPhotos = photos;
+          _isLoadingDevicePhotos = false;
+        });
+
+        // 현재 사진의 인덱스 찾기
+        final initialIndex = photos.indexWhere((p) => p.id == widget.photoId);
+        if (initialIndex != -1) {
+          setState(() {
+            _pageController = PageController(initialPage: initialIndex);
+            _loadDataForCurrentPhoto(galleryModel, photos[initialIndex]);
+            _isLoading = false;
+          });
+        } else {
+          if (Navigator.canPop(context)) Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingDevicePhotos = false;
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('사진 로드 중 오류 발생: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 }
