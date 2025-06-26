@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:media_store_plus/media_store_plus.dart';
 
 class GalleryModel extends ChangeNotifier {
   List<Photo> _photos = [];
@@ -305,112 +306,77 @@ class GalleryModel extends ChangeNotifier {
       final photo = photos.firstWhere((p) => p.id == photoId);
       debugPrint('삭제할 사진 정보: id=${photo.id}, path=${photo.path}');
 
-      // Android 권한 체크
-      if (Platform.isAndroid) {
-        debugPrint('안드로이드 권한 체크 시작...');
-
-        // Android 12 이상인지 확인
-        final isAndroid12OrHigher = await _isAndroid12OrHigher();
-        debugPrint('Android 12 이상 여부: $isAndroid12OrHigher');
-
-        if (isAndroid12OrHigher) {
-          // Android 13 이상에서는 READ_MEDIA_IMAGES 권한 사용
-          final isAndroid13OrHigher = await _isAndroid13OrHigher();
-          if (isAndroid13OrHigher) {
-            final mediaImagesStatus = await Permission.photos.status;
-            debugPrint('Media Images 권한 상태: $mediaImagesStatus');
-
-            if (mediaImagesStatus.isDenied) {
-              debugPrint('Media Images 권한 요청 시작...');
-              final mediaImagesResult = await Permission.photos.request();
-              debugPrint('Media Images 권한 요청 결과: $mediaImagesResult');
-              if (mediaImagesResult.isDenied) {
-                debugPrint('Media Images 권한이 거부됨');
-                return false;
-              }
-            }
-          } else {
-            // Android 12에서는 storage 권한 사용
-            final storageStatus = await Permission.storage.status;
-            debugPrint('Storage 권한 상태: $storageStatus');
-
-            if (storageStatus.isDenied) {
-              debugPrint('Storage 권한 요청 시작...');
-              final storageResult = await Permission.storage.request();
-              debugPrint('Storage 권한 요청 결과: $storageResult');
-              if (storageResult.isDenied) {
-                debugPrint('Storage 권한이 거부됨');
-                return false;
-              }
-            }
-          }
-
-          // Android 12 이상에서는 추가로 MANAGE_EXTERNAL_STORAGE 권한도 필요할 수 있음
-          final manageStorageStatus =
-              await Permission.manageExternalStorage.status;
-          debugPrint('Manage External Storage 권한 상태: $manageStorageStatus');
-
-          if (manageStorageStatus.isDenied) {
-            debugPrint('Manage External Storage 권한 요청 시작...');
-            final manageStorageResult =
-                await Permission.manageExternalStorage.request();
-            debugPrint(
-              'Manage External Storage 권한 요청 결과: $manageStorageResult',
-            );
-            if (manageStorageResult.isDenied) {
-              debugPrint('Manage External Storage 권한이 거부됨');
-              return false;
-            }
-          }
-        } else {
-          // Android 12 미만에서는 storage 권한도 필요
-          final storageStatus = await Permission.storage.status;
-          debugPrint('Storage 권한 상태: $storageStatus');
-
-          if (storageStatus.isDenied) {
-            debugPrint('Storage 권한 요청 시작...');
-            final storageResult = await Permission.storage.request();
-            debugPrint('Storage 권한 요청 결과: $storageResult');
-            if (storageResult.isDenied) {
-              debugPrint('Storage 권한이 거부됨');
-              return false;
-            }
-          }
-        }
-      }
-
       bool systemDeleteSuccess = false;
 
-      // 1. PhotoManager를 통한 삭제 시도
-      if (photo.asset != null) {
+      // Android에서 MediaStore API를 사용한 삭제 시도
+      if (Platform.isAndroid) {
         try {
-          debugPrint('PhotoManager를 통한 삭제 시도...');
-          final List<String> result = await PhotoManager.editor.deleteWithIds([
-            photo.asset!.id,
-          ]);
-          systemDeleteSuccess = result.isNotEmpty;
-          debugPrint(
-            'PhotoManager 삭제 결과: $systemDeleteSuccess, 삭제된 ID: $result',
-          );
-        } catch (e) {
-          debugPrint('PhotoManager 삭제 실패: $e');
-        }
-      }
+          debugPrint('MediaStore API를 통한 삭제 시도...');
 
-      // 2. 파일 시스템을 통한 삭제 시도
-      if (!systemDeleteSuccess) {
-        try {
-          debugPrint('파일 시스템을 통한 삭제 시도...');
-          final file = File(photo.path);
-          if (await file.exists()) {
-            await file.delete();
-            systemDeleteSuccess = true;
-            debugPrint('파일 시스템 삭제 성공');
-          } else {
-            debugPrint('파일이 존재하지 않음');
+          // MediaStore 초기화
+          await MediaStore.ensureInitialized();
+
+          // MediaStore deleteFileUsingUri를 사용하여 URI로 삭제 시도
+          if (photo.asset != null) {
+            // PhotoManager asset에서 URI 생성 시도
+            try {
+              // asset을 통해 파일 삭제 시도
+              final List<String> result = await PhotoManager.editor
+                  .deleteWithIds([photo.asset!.id]);
+              systemDeleteSuccess = result.isNotEmpty;
+              debugPrint(
+                'PhotoManager 삭제 결과: $systemDeleteSuccess, 삭제된 ID: $result',
+              );
+            } catch (e) {
+              debugPrint('PhotoManager 삭제 실패: $e');
+            }
+          }
+
+          // PhotoManager 삭제가 실패한 경우, 파일 경로로 직접 삭제 시도
+          if (!systemDeleteSuccess) {
+            try {
+              debugPrint('파일 경로를 통한 삭제 시도...');
+              final file = File(photo.path);
+              if (await file.exists()) {
+                await file.delete();
+                systemDeleteSuccess = true;
+                debugPrint('파일 시스템 삭제 성공');
+              } else {
+                debugPrint('파일이 존재하지 않음');
+              }
+            } catch (e) {
+              debugPrint('파일 시스템 삭제 실패: $e');
+            }
           }
         } catch (e) {
-          debugPrint('파일 시스템 삭제 실패: $e');
+          debugPrint('MediaStore API 삭제 실패: $e');
+
+          // MediaStore 실패 시 fallback으로 PhotoManager 사용
+          if (photo.asset != null) {
+            try {
+              debugPrint('Fallback: PhotoManager를 통한 삭제 시도...');
+              final List<String> result = await PhotoManager.editor
+                  .deleteWithIds([photo.asset!.id]);
+              systemDeleteSuccess = result.isNotEmpty;
+              debugPrint('Fallback PhotoManager 삭제 결과: $systemDeleteSuccess');
+            } catch (e) {
+              debugPrint('Fallback PhotoManager 삭제도 실패: $e');
+            }
+          }
+        }
+      } else {
+        // iOS의 경우 PhotoManager 사용
+        if (photo.asset != null) {
+          try {
+            debugPrint('iOS PhotoManager를 통한 삭제 시도...');
+            final List<String> result = await PhotoManager.editor.deleteWithIds(
+              [photo.asset!.id],
+            );
+            systemDeleteSuccess = result.isNotEmpty;
+            debugPrint('iOS PhotoManager 삭제 결과: $systemDeleteSuccess');
+          } catch (e) {
+            debugPrint('iOS PhotoManager 삭제 실패: $e');
+          }
         }
       }
 
