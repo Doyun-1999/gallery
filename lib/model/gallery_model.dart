@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:gallery_memo/model/album_model.dart';
@@ -48,6 +49,18 @@ class GalleryModel extends ChangeNotifier {
   GalleryModel() {
     _initSharedPreferences();
     _loadData();
+    PhotoManager.addChangeCallback(_handlePhotoChange);
+  }
+
+  @override
+  void dispose() {
+    PhotoManager.removeChangeCallback(_handlePhotoChange);
+    super.dispose();
+  }
+
+  void _handlePhotoChange(details) {
+    debugPrint('갤러리 변경 감지됨. 새로고침을 시작합니다.');
+    refreshGallery();
   }
 
   Future<void> _initSharedPreferences() async {
@@ -302,95 +315,170 @@ class GalleryModel extends ChangeNotifier {
   }
 
   Future<bool> deletePhoto(String photoId) async {
+    if (photoId.isEmpty) {
+      debugPrint('삭제 실패: 유효하지 않은 photoId');
+      return false;
+    }
+
+    Photo? photo;
     try {
-      final photo = photos.firstWhere((p) => p.id == photoId);
-      debugPrint('삭제할 사진 정보: id=${photo.id}, path=${photo.path}');
+      photo = photos.firstWhere((p) => p.id == photoId);
+    } catch (e) {
+      debugPrint('삭제 실패: 사진을 찾을 수 없음 - photoId: $photoId');
+      return false;
+    }
 
-      bool systemDeleteSuccess = false;
+    debugPrint('삭제할 사진 정보: id=${photo.id}, path=${photo.path}');
 
-      // Android에서 MediaStore API를 사용한 삭제 시도
+    final originalPhotoList = List<Photo>.from(_photos);
+    bool systemDeleteSuccess = false;
+
+    try {
       if (Platform.isAndroid) {
-        try {
-          debugPrint('MediaStore API를 통한 삭제 시도...');
-
-          // MediaStore 초기화
-          await MediaStore.ensureInitialized();
-
-          // MediaStore deleteFileUsingUri를 사용하여 URI로 삭제 시도
-          if (photo.asset != null) {
-            // PhotoManager asset에서 URI 생성 시도
-            try {
-              // asset을 통해 파일 삭제 시도
-              final List<String> result = await PhotoManager.editor
-                  .deleteWithIds([photo.asset!.id]);
-              systemDeleteSuccess = result.isNotEmpty;
-              debugPrint(
-                'PhotoManager 삭제 결과: $systemDeleteSuccess, 삭제된 ID: $result',
-              );
-            } catch (e) {
-              debugPrint('PhotoManager 삭제 실패: $e');
-            }
-          }
-
-          // PhotoManager 삭제가 실패한 경우, 파일 경로로 직접 삭제 시도
-          if (!systemDeleteSuccess) {
-            try {
-              debugPrint('파일 경로를 통한 삭제 시도...');
-              final file = File(photo.path);
-              if (await file.exists()) {
-                await file.delete();
-                systemDeleteSuccess = true;
-                debugPrint('파일 시스템 삭제 성공');
-              } else {
-                debugPrint('파일이 존재하지 않음');
-              }
-            } catch (e) {
-              debugPrint('파일 시스템 삭제 실패: $e');
-            }
-          }
-        } catch (e) {
-          debugPrint('MediaStore API 삭제 실패: $e');
-
-          // MediaStore 실패 시 fallback으로 PhotoManager 사용
-          if (photo.asset != null) {
-            try {
-              debugPrint('Fallback: PhotoManager를 통한 삭제 시도...');
-              final List<String> result = await PhotoManager.editor
-                  .deleteWithIds([photo.asset!.id]);
-              systemDeleteSuccess = result.isNotEmpty;
-              debugPrint('Fallback PhotoManager 삭제 결과: $systemDeleteSuccess');
-            } catch (e) {
-              debugPrint('Fallback PhotoManager 삭제도 실패: $e');
-            }
-          }
-        }
+        systemDeleteSuccess = await _deletePhotoAndroid(photo);
+      } else if (Platform.isIOS) {
+        systemDeleteSuccess = await _deletePhotoIOS(photo);
       } else {
-        // iOS의 경우 PhotoManager 사용
-        if (photo.asset != null) {
-          try {
-            debugPrint('iOS PhotoManager를 통한 삭제 시도...');
-            final List<String> result = await PhotoManager.editor.deleteWithIds(
-              [photo.asset!.id],
-            );
-            systemDeleteSuccess = result.isNotEmpty;
-            debugPrint('iOS PhotoManager 삭제 결과: $systemDeleteSuccess');
-          } catch (e) {
-            debugPrint('iOS PhotoManager 삭제 실패: $e');
-          }
-        }
+        debugPrint('지원되지 않는 플랫폼');
+        return false;
       }
 
       if (systemDeleteSuccess) {
-        _photos.removeWhere((p) => p.id == photoId);
-        await _savePhotos();
-        notifyListeners();
-        return true;
+        try {
+          await _cleanupPhotoReferences(photoId);
+          _photos.removeWhere((p) => p.id == photoId);
+          await _savePhotos();
+          notifyListeners();
+          debugPrint('사진 삭제 완료: $photoId');
+          return true;
+        } catch (e) {
+          debugPrint('참조 정리 실패, 롤백 시도: $e');
+          _photos.clear();
+          _photos.addAll(originalPhotoList);
+          await _savePhotos();
+          notifyListeners();
+          return false;
+        }
+      } else {
+        debugPrint('시스템 레벨 삭제 실패');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('사진 삭제 중 예외 발생: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _deletePhotoAndroid(Photo photo) async {
+    try {
+      debugPrint('Android 삭제 시도');
+
+      await MediaStore.ensureInitialized();
+
+      if (photo.asset != null) {
+        try {
+          final List<String> result = await PhotoManager.editor.deleteWithIds([
+            photo.asset!.id,
+          ]);
+          if (result.isNotEmpty) {
+            debugPrint('PhotoManager 삭제 성공: $result');
+            return true;
+          }
+        } catch (e) {
+          debugPrint('PhotoManager 삭제 실패: $e');
+        }
       }
 
-      return false;
+      try {
+        final file = File(photo.path);
+        if (await file.exists()) {
+          await file.delete();
+          debugPrint('파일 시스템 삭제 성공');
+          return true;
+        } else {
+          debugPrint('파일이 존재하지 않음 - 이미 삭제됨으로 간주');
+          return true;
+        }
+      } catch (e) {
+        debugPrint('파일 시스템 삭제 실패: $e');
+      }
     } catch (e) {
-      debugPrint('사진 삭제 중 오류 발생: $e');
-      return false;
+      debugPrint('Android 삭제 시도 실패: $e');
+    }
+
+    return false;
+  }
+
+  Future<bool> _deletePhotoIOS(Photo photo) async {
+    try {
+      debugPrint('iOS 삭제 시도');
+
+      if (photo.asset != null) {
+        final List<String> result = await PhotoManager.editor.deleteWithIds([
+          photo.asset!.id,
+        ]);
+        if (result.isNotEmpty) {
+          debugPrint('iOS PhotoManager 삭제 성공: $result');
+          return true;
+        }
+      } else {
+        debugPrint('iOS에서 asset이 null - 파일 직접 삭제 시도');
+        try {
+          final file = File(photo.path);
+          if (await file.exists()) {
+            await file.delete();
+            debugPrint('iOS 파일 시스템 삭제 성공');
+            return true;
+          }
+        } catch (e) {
+          debugPrint('iOS 파일 직접 삭제 실패: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('iOS 삭제 시도 실패: $e');
+    }
+
+    return false;
+  }
+
+  Future<void> _cleanupPhotoReferences(String photoId) async {
+    try {
+      removeFavorite(photoId);
+
+      for (final album in _albums) {
+        if (album.photoIds.contains(photoId)) {
+          album.photoIds.remove(photoId);
+        }
+      }
+      await _saveAlbums();
+
+      final prefs = await SharedPreferences.getInstance();
+      final memoKey = 'memo_$photoId';
+      final voiceMemoKey = 'voice_memo_$photoId';
+
+      if (prefs.containsKey(memoKey)) {
+        await prefs.remove(memoKey);
+      }
+
+      if (prefs.containsKey(voiceMemoKey)) {
+        final voiceMemoPath = prefs.getString(voiceMemoKey);
+        if (voiceMemoPath != null) {
+          try {
+            final voiceFile = File(voiceMemoPath);
+            if (await voiceFile.exists()) {
+              await voiceFile.delete();
+            }
+          } catch (e) {
+            debugPrint('음성 메모 파일 삭제 실패: $e');
+          }
+        }
+        await prefs.remove(voiceMemoKey);
+      }
+
+      debugPrint('사진 참조 정리 완료: $photoId');
+    } catch (e) {
+      debugPrint('사진 참조 정리 중 오류: $e');
+      rethrow;
     }
   }
 
@@ -1057,5 +1145,191 @@ class GalleryModel extends ChangeNotifier {
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
     return androidInfo.version.sdkInt >= 33; // Android 13은 SDK 33
+  }
+
+  Future<bool> deleteMultiplePhotos(List<String> photoIds) async {
+    if (photoIds.isEmpty) {
+      debugPrint('삭제 실패: 삭제할 사진이 없습니다');
+      return false;
+    }
+
+    debugPrint('${photoIds.length}개의 사진 삭제 시작');
+
+    final originalPhotoList = List<Photo>.from(_photos);
+    final photosToDelete =
+        photos.where((p) => photoIds.contains(p.id)).toList();
+
+    if (photosToDelete.length != photoIds.length) {
+      debugPrint('일부 사진을 찾을 수 없습니다');
+      return false;
+    }
+
+    try {
+      // 시스템 레벨에서 한 번에 삭제 시도
+      bool systemDeleteSuccess = false;
+
+      if (Platform.isAndroid) {
+        systemDeleteSuccess = await _deleteMultiplePhotosAndroid(
+          photosToDelete,
+        );
+      } else if (Platform.isIOS) {
+        systemDeleteSuccess = await _deleteMultiplePhotosIOS(photosToDelete);
+      } else {
+        debugPrint('지원되지 않는 플랫폼');
+        return false;
+      }
+
+      if (systemDeleteSuccess) {
+        // 모든 참조 정리
+        for (final photoId in photoIds) {
+          await _cleanupPhotoReferences(photoId);
+        }
+
+        // 사진 목록에서 제거
+        _photos.removeWhere((p) => photoIds.contains(p.id));
+        await _savePhotos();
+        notifyListeners();
+
+        debugPrint('${photoIds.length}개의 사진 삭제 완료');
+        return true;
+      } else {
+        debugPrint('시스템 레벨 삭제 실패');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('다중 사진 삭제 중 예외 발생: $e');
+      // 롤백
+      _photos.clear();
+      _photos.addAll(originalPhotoList);
+      await _savePhotos();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> _deleteMultiplePhotosAndroid(List<Photo> photos) async {
+    try {
+      debugPrint('Android 다중 삭제 시도');
+
+      await MediaStore.ensureInitialized();
+
+      // PhotoManager를 통한 일괄 삭제 시도
+      final assetIds =
+          photos
+              .where((photo) => photo.asset != null)
+              .map((photo) => photo.asset!.id)
+              .toList();
+
+      if (assetIds.isNotEmpty) {
+        try {
+          final List<String> result = await PhotoManager.editor.deleteWithIds(
+            assetIds,
+          );
+          if (result.isNotEmpty) {
+            debugPrint('PhotoManager 다중 삭제 성공: ${result.length}개');
+            return true;
+          }
+        } catch (e) {
+          debugPrint('PhotoManager 다중 삭제 실패: $e');
+        }
+      }
+
+      // 개별 파일 삭제로 폴백
+      bool allDeleted = true;
+      for (final photo in photos) {
+        try {
+          final file = File(photo.path);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (e) {
+          debugPrint('파일 삭제 실패: ${photo.path} - $e');
+          allDeleted = false;
+        }
+      }
+
+      return allDeleted;
+    } catch (e) {
+      debugPrint('Android 다중 삭제 시도 실패: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _deleteMultiplePhotosIOS(List<Photo> photos) async {
+    try {
+      debugPrint('iOS 다중 삭제 시도');
+
+      // PhotoManager를 통한 일괄 삭제 시도
+      final assetIds =
+          photos
+              .where((photo) => photo.asset != null)
+              .map((photo) => photo.asset!.id)
+              .toList();
+
+      if (assetIds.isNotEmpty) {
+        try {
+          final List<String> result = await PhotoManager.editor.deleteWithIds(
+            assetIds,
+          );
+          if (result.isNotEmpty) {
+            debugPrint('iOS PhotoManager 다중 삭제 성공: ${result.length}개');
+            return true;
+          }
+        } catch (e) {
+          debugPrint('iOS PhotoManager 다중 삭제 실패: $e');
+        }
+      }
+
+      // 개별 파일 삭제로 폴백
+      bool allDeleted = true;
+      for (final photo in photos) {
+        try {
+          final file = File(photo.path);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (e) {
+          debugPrint('iOS 파일 삭제 실패: ${photo.path} - $e');
+          allDeleted = false;
+        }
+      }
+
+      return allDeleted;
+    } catch (e) {
+      debugPrint('iOS 다중 삭제 시도 실패: $e');
+      return false;
+    }
+  }
+
+  // 수동 새로고침 (기존 메소드 개선)
+  Future<void> refreshGallery() async {
+    try {
+      debugPrint('수동 갤러리 새로고침 시작');
+
+      // 기존 즐겨찾기 ID 목록 백업
+      final favoriteIds = _favorites.map((p) => p.id).toList();
+
+      _isLoading = true;
+      _currentPage = 0;
+      _photos.clear();
+      _cachedThumbnails.clear();
+      _totalPhotoCount = null;
+      notifyListeners();
+
+      // 기기 갤러리에서 새로운 사진 로드
+      await loadDevicePhotos(favoriteIds);
+
+      // 메모와 즐겨찾기 다시 로드
+      await _loadMemos();
+      await _loadFavorites();
+
+      _isLoading = false;
+      debugPrint('갤러리 새로고침 완료');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('수동 갤러리 새로고침 중 오류: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }

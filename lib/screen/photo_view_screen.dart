@@ -20,6 +20,7 @@ class PhotoViewScreen extends StatefulWidget {
   final PhotoViewSource source;
   final String? albumId;
   final AssetPathEntity? deviceAlbum;
+  final List<Photo>? videos;
 
   const PhotoViewScreen({
     super.key,
@@ -27,6 +28,7 @@ class PhotoViewScreen extends StatefulWidget {
     this.source = PhotoViewSource.gallery,
     this.albumId,
     this.deviceAlbum,
+    this.videos,
   });
 
   @override
@@ -126,12 +128,8 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
         if (widget.albumId == null) return [];
         return galleryModel.getAlbumPhotos(widget.albumId!);
       case PhotoViewSource.video:
-        // 기기 앨범의 경우 직접 처리
-        if (widget.deviceAlbum != null) {
-          // 현재는 빈 리스트를 반환하고, 나중에 비동기적으로 로드
-          return [];
-        }
-        return [];
+        // 전달받은 비디오 목록이 있으면 사용, 없으면 빈 리스트
+        return widget.videos ?? [];
       default:
         return galleryModel.photos;
     }
@@ -154,13 +152,34 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
     }
   }
 
+  // 메모 업데이트 콜백 함수
+  void _onMemoUpdated(String? newMemo) {
+    if (mounted) {
+      setState(() {
+        _currentMemo = newMemo;
+      });
+    }
+  }
+
   void _showMemoDialog(Photo photo) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => MemoDialog(photo: photo),
+      builder:
+          (context) => MemoDialog(photo: photo, onMemoUpdated: _onMemoUpdated),
     );
+  }
+
+  void _toggleVideoPlayback() {
+    if (_videoController == null) return;
+
+    if (_videoController!.value.isPlaying) {
+      _videoController!.pause();
+    } else {
+      _videoController!.play();
+    }
+    setState(() {}); // UI 업데이트를 위해 setState 호출
   }
 
   @override
@@ -195,6 +214,15 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
       (photo) => photo.id == _currentPhotoId,
       orElse: () => photoList.first,
     );
+
+    // 현재 사진의 메모 상태를 실시간으로 감지하고 업데이트
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _currentMemo != currentPhoto.memo) {
+        setState(() {
+          _currentMemo = currentPhoto.memo;
+        });
+      }
+    });
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -299,19 +327,21 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
                     onPressed: () => Navigator.pop(context),
                   ),
                   actions: [
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.white),
-                      onPressed:
-                          () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => ImageEditorScreen(
-                                    imagePath: currentPhoto.path,
-                                  ),
+                    if (!currentPhoto.isVideo) ...[
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.white),
+                        onPressed:
+                            () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (context) => ImageEditorScreen(
+                                      imagePath: currentPhoto.path,
+                                    ),
+                              ),
                             ),
-                          ),
-                    ),
+                      ),
+                    ],
                     IconButton(
                       icon: Icon(
                         currentPhoto.isFavorite
@@ -341,7 +371,18 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _showDeleteDialog(context, currentPhoto),
+                      onPressed: () async {
+                        final galleryModel = Provider.of<GalleryModel>(
+                          context,
+                          listen: false,
+                        );
+                        final success = await galleryModel.deletePhoto(
+                          currentPhoto.id,
+                        );
+                        if (success && mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -364,7 +405,7 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
                 ),
                 child:
                     currentPhoto.isVideo
-                        ? _buildVideoControls()
+                        ? _buildVideoControls(currentPhoto)
                         : _buildPhotoControls(currentPhoto),
               ),
             ),
@@ -400,50 +441,70 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
     );
   }
 
-  Widget _buildVideoControls() {
-    if (!_isVideoInitialized || _videoController == null) return Container();
-    return Row(
+  Widget _buildVideoControls(Photo photo) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          icon: Icon(
-            _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-            color: Colors.white,
+        if (_currentMemo != null && _currentMemo!.isNotEmpty)
+          PhotoMemoDisplay(
+            memo: _currentMemo,
+            voiceMemoPath: photo.voiceMemoPath,
           ),
-          onPressed:
-              () => setState(
-                () =>
-                    _videoController!.value.isPlaying
-                        ? _videoController!.pause()
-                        : _videoController!.play(),
-              ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            PhotoControlButton(
+              icon:
+                  _currentMemo != null && _currentMemo!.isNotEmpty
+                      ? Icons.note
+                      : Icons.note_add,
+              onPressed: () => _showMemoDialog(photo),
+            ),
+          ],
         ),
-        Expanded(
-          child: ValueListenableBuilder(
-            valueListenable: _videoController!,
-            builder: (context, VideoPlayerValue value, child) {
-              return Slider(
-                value: value.position.inMilliseconds.toDouble().clamp(
-                  0.0,
-                  value.duration.inMilliseconds.toDouble(),
+        const SizedBox(height: 8),
+        if (_isVideoInitialized && _videoController != null)
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(
+                  _videoController!.value.isPlaying
+                      ? Icons.pause
+                      : Icons.play_arrow,
+                  color: Colors.white,
                 ),
-                min: 0,
-                max: value.duration.inMilliseconds.toDouble(),
-                onChanged:
-                    (newValue) => _videoController!.seekTo(
-                      Duration(milliseconds: newValue.toInt()),
-                    ),
-              );
-            },
-          ),
-        ),
-        ValueListenableBuilder(
-          valueListenable: _videoController!,
-          builder:
-              (context, VideoPlayerValue value, child) => Text(
-                '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                onPressed: _toggleVideoPlayback,
               ),
-        ),
+              Expanded(
+                child: ValueListenableBuilder(
+                  valueListenable: _videoController!,
+                  builder: (context, VideoPlayerValue value, child) {
+                    return Slider(
+                      value: value.position.inMilliseconds.toDouble().clamp(
+                        0.0,
+                        value.duration.inMilliseconds.toDouble(),
+                      ),
+                      min: 0,
+                      max: value.duration.inMilliseconds.toDouble(),
+                      onChanged:
+                          (newValue) => _videoController!.seekTo(
+                            Duration(milliseconds: newValue.toInt()),
+                          ),
+                    );
+                  },
+                ),
+              ),
+              ValueListenableBuilder(
+                valueListenable: _videoController!,
+                builder:
+                    (context, VideoPlayerValue value, child) => Text(
+                      '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -463,56 +524,6 @@ class PhotoViewScreenState extends State<PhotoViewScreen> {
   //     builder: (context) => AddToAlbumDialog(photoId: photoId),
   //   );
   // }
-
-  void _showDeleteDialog(BuildContext context, Photo photo) {
-    showCupertinoDialog(
-      context: context,
-      builder:
-          (BuildContext dialogContext) => CupertinoAlertDialog(
-            title: Text('${photo.isVideo ? '비디오' : '사진'} 삭제'),
-            content: const Text('이 항목을 삭제하시겠습니까? 이 동작은 되돌릴 수 없습니다.'),
-            actions: [
-              CupertinoDialogAction(
-                child: const Text('취소'),
-                onPressed: () => Navigator.of(dialogContext).pop(),
-              ),
-              CupertinoDialogAction(
-                isDestructiveAction: true,
-                child: const Text('삭제'),
-                onPressed: () async {
-                  Navigator.of(dialogContext).pop();
-                  try {
-                    final galleryModel = Provider.of<GalleryModel>(
-                      context,
-                      listen: false,
-                    );
-                    final success = await galleryModel.deletePhoto(photo.id);
-                    if (success && mounted) {
-                      Navigator.of(context).pop();
-                    } else if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('삭제에 실패했습니다. 권한을 확인해주세요.'),
-                          duration: Duration(seconds: 3),
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('삭제 중 오류 발생: ${e.toString()}'),
-                          duration: const Duration(seconds: 3),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-            ],
-          ),
-    );
-  }
 
   void _showPhotoInfoDialog(BuildContext context, Photo photo) {
     showModalBottomSheet(

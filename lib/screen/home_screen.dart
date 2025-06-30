@@ -291,9 +291,7 @@ class HomeScreenState extends State<HomeScreen> {
     });
 
     final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-    await galleryModel.loadDevicePhotos(
-      galleryModel.favorites.map((p) => p.id).toList(),
-    );
+    await galleryModel.refreshGallery();
 
     if (mounted) {
       setState(() {
@@ -330,32 +328,9 @@ class HomeScreenState extends State<HomeScreen> {
 
   Future<void> _deleteSelectedPhotos(BuildContext context) async {
     final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('삭제 확인'),
-            content: Text('${_selectedPhotoIds.length}개의 항목을 삭제하시겠습니까?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('취소'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('삭제', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          ),
-    );
-
-    if (confirm == true) {
-      final Set<String> idsToDelete = Set.from(_selectedPhotoIds);
-      for (final photoId in idsToDelete) {
-        await galleryModel.deletePhoto(photoId);
-      }
-      _exitSelectMode();
-    }
+    final photoIds = _selectedPhotoIds.toList();
+    await galleryModel.deleteMultiplePhotos(photoIds);
+    _exitSelectMode();
   }
 
   void _addSelectedPhotosToAlbum(BuildContext context) async {

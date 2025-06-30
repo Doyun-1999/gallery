@@ -10,8 +10,9 @@ import 'dart:async';
 
 class MemoDialog extends StatefulWidget {
   final Photo photo;
+  final Function(String?)? onMemoUpdated;
 
-  const MemoDialog({super.key, required this.photo});
+  const MemoDialog({super.key, required this.photo, this.onMemoUpdated});
 
   @override
   State<MemoDialog> createState() => _MemoDialogState();
@@ -182,6 +183,9 @@ class _MemoDialogState extends State<MemoDialog> {
                 listen: false,
               );
               await galleryModel.addVoiceMemo(widget.photo.id, path);
+
+              // 음성 메모 추가 후 콜백 호출 (음성 메모가 있음을 알림)
+              widget.onMemoUpdated?.call(widget.photo.memo);
             } catch (e) {
               throw Exception('파일 경로 저장 중 오류가 발생했습니다.');
             }
@@ -292,6 +296,9 @@ class _MemoDialogState extends State<MemoDialog> {
       }
       final galleryModel = Provider.of<GalleryModel>(context, listen: false);
       galleryModel.addVoiceMemo(widget.photo.id, '');
+
+      // 음성 메모 삭제 후 콜백 호출
+      widget.onMemoUpdated?.call(widget.photo.memo);
     }
   }
 
@@ -541,7 +548,13 @@ class _MemoDialogState extends State<MemoDialog> {
         children: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('취소', style: TextStyle(color: Colors.white70)),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: const Text(
+              '취소',
+              style: TextStyle(color: Colors.white70, fontSize: 15),
+            ),
           ),
           const SizedBox(width: 8),
           ElevatedButton(
@@ -553,18 +566,28 @@ class _MemoDialogState extends State<MemoDialog> {
                   listen: false,
                 );
                 await galleryModel.addMemo(widget.photo.id, memo);
+
+                // 메모 업데이트 콜백 호출
+                widget.onMemoUpdated?.call(memo);
+
                 if (mounted) {
                   Navigator.pop(context);
                 }
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
+              elevation: 0,
             ),
-            child: const Text('저장'),
+            child: const Text(
+              '저장',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+            ),
           ),
         ],
       ),

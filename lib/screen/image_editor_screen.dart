@@ -8,6 +8,8 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:gallery_saver/gallery_saver.dart';
 import 'package:flutter/rendering.dart';
+import 'package:provider/provider.dart';
+import 'package:gallery_memo/model/gallery_model.dart';
 
 class ImageEditorScreen extends StatefulWidget {
   final String imagePath;
@@ -69,34 +71,45 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
   Future<void> _saveImage(bool overwrite) async {
     try {
-      final boundary =
-          _captureKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary == null) throw Exception('화면을 캡처할 수 없습니다.');
-      final image = await boundary.toImage(
-        pixelRatio: ui.window.devicePixelRatio,
-      );
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final capturedData = byteData?.buffer.asUint8List();
-      if (capturedData == null) throw Exception('이미지 변환에 실패했습니다.');
+      Uint8List imageDataToSave;
+
+      // 편집된 이미지 데이터가 있으면 사용, 없으면 현재 화면 캡처
+      if (_editedImageData != null) {
+        imageDataToSave = _editedImageData!;
+      } else {
+        final boundary =
+            _captureKey.currentContext?.findRenderObject()
+                as RenderRepaintBoundary?;
+        if (boundary == null) throw Exception('화면을 캡처할 수 없습니다.');
+        final image = await boundary.toImage(
+          pixelRatio: ui.window.devicePixelRatio,
+        );
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        final capturedData = byteData?.buffer.asUint8List();
+        if (capturedData == null) throw Exception('이미지 변환에 실패했습니다.');
+        imageDataToSave = capturedData;
+      }
 
       if (overwrite) {
-        await _imageFile.writeAsBytes(capturedData);
+        // 덮어쓰기
+        await _imageFile.writeAsBytes(imageDataToSave);
         setState(() {
           _imageFile = File(_imageFile.path);
-          _editedImageData = capturedData;
+          _editedImageData = imageDataToSave;
         });
         await _loadImage();
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('이미지가 저장되었습니다.')));
+        }
       } else {
+        // 새 파일로 저장
         final tempDir = await getTemporaryDirectory();
         final fileName = 'edited_${DateTime.now().millisecondsSinceEpoch}.png';
         final tempFile = await File(
           path.join(tempDir.path, fileName),
-        ).writeAsBytes(capturedData);
+        ).writeAsBytes(imageDataToSave);
         final success = await GallerySaver.saveImage(tempFile.path);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -106,6 +119,15 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
               ),
             ),
           );
+
+          // 저장 성공 시 GalleryModel 새로고침
+          if (success == true) {
+            final galleryModel = Provider.of<GalleryModel>(
+              context,
+              listen: false,
+            );
+            await galleryModel.loadDevicePhotos([]);
+          }
         }
       }
     } catch (e) {
@@ -145,6 +167,20 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _resetCropState();
       });
       await _loadImage();
+
+      // 크롭 완료 후 저장 및 네비게이션 처리
+      await _handleCropComplete();
+    }
+  }
+
+  Future<void> _handleCropComplete() async {
+    // 크롭된 이미지를 새 파일로 저장
+    await _saveImage(false);
+
+    // 저장 완료 후 홈 화면으로 가기 (두 번 pop)
+    if (mounted) {
+      Navigator.of(context).pop(); // 사진 보기 화면으로
+      Navigator.of(context).pop(); // 홈 화면으로
     }
   }
 
@@ -386,15 +422,20 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
             icon: Icon(_isCropping ? Icons.check : Icons.crop),
             onPressed: _isCropping ? _cropImage : _toggleCropping,
           ),
-          IconButton(
-            icon: const Icon(Icons.rotate_right),
-            onPressed: _rotateImage,
-          ),
-          IconButton(
-            icon: Icon(_isDrawing ? Icons.edit_off : Icons.edit),
-            onPressed: _toggleDrawing,
-          ),
-          IconButton(icon: const Icon(Icons.save), onPressed: _showSaveDialog),
+          if (!_isCropping) ...[
+            IconButton(
+              icon: const Icon(Icons.rotate_right),
+              onPressed: _rotateImage,
+            ),
+            IconButton(
+              icon: Icon(_isDrawing ? Icons.edit_off : Icons.edit),
+              onPressed: _toggleDrawing,
+            ),
+            IconButton(
+              icon: const Icon(Icons.save),
+              onPressed: _showSaveDialog,
+            ),
+          ],
         ],
       ),
       body: Container(

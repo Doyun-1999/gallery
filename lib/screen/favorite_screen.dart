@@ -175,8 +175,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 onError: (photoId) {
                   if (mounted) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                    setState(() {
-                      _errorPhotoIds.add(photoId);
+                      setState(() {
+                        _errorPhotoIds.add(photoId);
                       });
                     });
                   }
@@ -272,32 +272,31 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     BuildContext context,
     GalleryModel galleryModel,
   ) async {
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('사진 삭제'),
-            content: Text('${_selectedPhotoIds.length}개의 항목을 기기에서 삭제하시겠습니까?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('취소'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('삭제', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          ),
-    );
-
-    if (confirm == true) {
-      final Set<String> idsToDelete = Set.from(_selectedPhotoIds);
-      for (final photoId in idsToDelete) {
-        await galleryModel.deletePhoto(photoId);
-      }
-      _exitSelectMode();
+    // final bool? confirm = await showDialog<bool>(
+    //   context: context,
+    //   builder:
+    //       (context) => AlertDialog(
+    //         title: const Text('사진 삭제'),
+    //         content: Text('${_selectedPhotoIds.length}개의 항목을 기기에서 삭제하시겠습니까?'),
+    //         actions: [
+    //           TextButton(
+    //             onPressed: () => Navigator.pop(context, false),
+    //             child: const Text('취소'),
+    //           ),
+    //           TextButton(
+    //             onPressed: () => Navigator.pop(context, true),
+    //             child: const Text('삭제', style: TextStyle(color: Colors.red)),
+    //           ),
+    //         ],
+    //       ),
+    // );
+    final Set<String> idsToDelete = Set.from(_selectedPhotoIds);
+    for (final photoId in idsToDelete) {
+      await galleryModel.deletePhoto(photoId);
     }
+    _exitSelectMode();
+
+    // if (confirm == true) {}
   }
 
   void _showClearAllDialog(BuildContext context, GalleryModel galleryModel) {
