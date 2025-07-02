@@ -73,7 +73,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     try {
       Uint8List imageDataToSave;
 
-      // 편집된 이미지 데이터가 있으면 사용, 없으면 현재 화면 캡처
       if (_editedImageData != null) {
         imageDataToSave = _editedImageData!;
       } else {
@@ -91,7 +90,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
       }
 
       if (overwrite) {
-        // 덮어쓰기
         await _imageFile.writeAsBytes(imageDataToSave);
         setState(() {
           _imageFile = File(_imageFile.path);
@@ -104,7 +102,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           ).showSnackBar(const SnackBar(content: Text('이미지가 저장되었습니다.')));
         }
       } else {
-        // 새 파일로 저장
         final tempDir = await getTemporaryDirectory();
         final fileName = 'edited_${DateTime.now().millisecondsSinceEpoch}.png';
         final tempFile = await File(
@@ -120,7 +117,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
             ),
           );
 
-          // 저장 성공 시 GalleryModel 새로고침
           if (success == true) {
             final galleryModel = Provider.of<GalleryModel>(
               context,
@@ -167,27 +163,23 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _resetCropState();
       });
       await _loadImage();
-
-      // 크롭 완료 후 저장 및 네비게이션 처리
       await _handleCropComplete();
     }
   }
 
   Future<void> _handleCropComplete() async {
-    // 크롭된 이미지를 새 파일로 저장
     await _saveImage(false);
-
-    // 저장 완료 후 홈 화면으로 가기 (두 번 pop)
     if (mounted) {
-      Navigator.of(context).pop(); // 사진 보기 화면으로
-      Navigator.of(context).pop(); // 홈 화면으로
+      Navigator.of(context).pop();
+      Navigator.of(context).pop();
     }
   }
 
   void _onPanStart(DragStartDetails details) {
     final box = _imageRenderBox;
-    if (box == null) return;
-    final localPosition = details.localPosition;
+    if (box == null || !box.hasSize) return;
+
+    final localPosition = box.globalToLocal(details.globalPosition);
 
     if (_isDrawing) {
       setState(() => _drawingPoints = [..._drawingPoints, localPosition]);
@@ -210,31 +202,40 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           return;
         }
       }
-      setState(() => _cropRect = Rect.fromPoints(localPosition, localPosition));
+      final clampedPosition = Offset(
+        localPosition.dx.clamp(0, box.size.width),
+        localPosition.dy.clamp(0, box.size.height),
+      );
+      setState(
+        () => _cropRect = Rect.fromPoints(clampedPosition, clampedPosition),
+      );
     }
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
     final box = _imageRenderBox;
-    if (box == null) return;
-    final localPosition = details.localPosition;
+    if (box == null || !box.hasSize) return;
 
-    final clampedPosition = Offset(
-      localPosition.dx.clamp(0, box.size.width).toDouble(),
-      localPosition.dy.clamp(0, box.size.height).toDouble(),
-    );
+    final localPosition = box.globalToLocal(details.globalPosition);
 
     if (_isDrawing) {
+      final clampedPosition = Offset(
+        localPosition.dx.clamp(0, box.size.width),
+        localPosition.dy.clamp(0, box.size.height),
+      );
       setState(() => _drawingPoints = [..._drawingPoints, clampedPosition]);
     } else if (_isCropping) {
       if (_activeHandleIndex != null) {
-        _updateCropWithHandle(clampedPosition);
+        _updateCropWithHandle(localPosition);
       } else if (_isMovingCropArea) {
-        if (_panStartOffset == null) return;
-        final delta = clampedPosition - _panStartOffset!;
+        if (_panStartOffset == null || _initialCropRect == null) return;
+        final delta = localPosition - _panStartOffset!;
         _moveCropArea(delta);
-        _panStartOffset = clampedPosition;
       } else if (_cropRect != null) {
+        final clampedPosition = Offset(
+          localPosition.dx.clamp(0, box.size.width),
+          localPosition.dy.clamp(0, box.size.height),
+        );
         setState(
           () =>
               _cropRect = Rect.fromPoints(_cropRect!.topLeft, clampedPosition),
@@ -260,28 +261,49 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   }
 
   void _updateCropWithHandle(Offset localPosition) {
-    if (_initialCropRect == null || _activeHandleIndex == null) return;
+    final box = _imageRenderBox;
+    if (_initialCropRect == null ||
+        _activeHandleIndex == null ||
+        box == null ||
+        !box.hasSize)
+      return;
+
+    // ✨ [수정] 핸들의 위치를 이미지 영역 안으로 강제로 제한합니다.
+    final clampedPosition = Offset(
+      localPosition.dx.clamp(0.0, box.size.width),
+      localPosition.dy.clamp(0.0, box.size.height),
+    );
+
     double left = _initialCropRect!.left;
     double top = _initialCropRect!.top;
     double right = _initialCropRect!.right;
     double bottom = _initialCropRect!.bottom;
-    if ([0, 6, 7].contains(_activeHandleIndex)) left = localPosition.dx;
-    if ([2, 3, 4].contains(_activeHandleIndex)) right = localPosition.dx;
-    if ([0, 1, 2].contains(_activeHandleIndex)) top = localPosition.dy;
-    if ([4, 5, 6].contains(_activeHandleIndex)) bottom = localPosition.dy;
+
+    // 제한된 좌표(clampedPosition)를 사용하여 핸들 위치를 업데이트합니다.
+    if ([0, 6, 7].contains(_activeHandleIndex)) left = clampedPosition.dx;
+    if ([2, 3, 4].contains(_activeHandleIndex)) right = clampedPosition.dx;
+    if ([0, 1, 2].contains(_activeHandleIndex)) top = clampedPosition.dy;
+    if ([4, 5, 6].contains(_activeHandleIndex)) bottom = clampedPosition.dy;
+
     setState(() => _cropRect = Rect.fromLTRB(left, top, right, bottom));
   }
 
   void _moveCropArea(Offset delta) {
     if (_initialCropRect == null) return;
     final box = _imageRenderBox;
-    if (box == null) return;
+    if (box == null || !box.hasSize) return;
 
     final newRect = _initialCropRect!.shift(delta);
-    double clampedLeft =
-        newRect.left.clamp(0, box.size.width - newRect.width).toDouble();
-    double clampedTop =
-        newRect.top.clamp(0, box.size.height - newRect.height).toDouble();
+
+    // 자르기 영역을 '이동'할 때는 영역이 완전히 사라지지 않도록만 제한합니다.
+    final double clampedLeft = newRect.left.clamp(
+      -newRect.width + 20, // 최소 20px는 보이도록
+      box.size.width - 20,
+    );
+    final double clampedTop = newRect.top.clamp(
+      -newRect.height + 20, // 최소 20px는 보이도록
+      box.size.height - 20,
+    );
 
     setState(() {
       _cropRect = Rect.fromLTWH(
@@ -290,7 +312,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         newRect.width,
         newRect.height,
       );
-      _initialCropRect = _cropRect;
     });
   }
 
@@ -309,8 +330,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
   int? _getHandleIndex(Offset position, Rect rect) {
     final handles = _getHandlePositions(rect);
+    const handleHitboxSize = 20.0;
     for (int i = 0; i < handles.length; i++) {
-      if ((position - handles[i]).distance < 20.0) return i;
+      if ((position - handles[i]).distance < handleHitboxSize) return i;
     }
     return null;
   }
@@ -335,9 +357,8 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   }
 
   void _toggleCropping() {
-    // 그리기 모드일 경우, 그린 내용을 초기화할지 물어볼 수 있습니다. (선택적)
     if (_drawingPoints.isNotEmpty) {
-      // 예: _drawingPoints.clear();
+      // _drawingPoints.clear();
     }
     if (_rotation != 0.0) {
       ScaffoldMessenger.of(
@@ -351,8 +372,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
       if (!_isCropping) {
         _resetCropState();
       } else {
-        // 🐛 [수정] 크롭 모드 시작 시 이미지 전체를 선택 영역으로 지정합니다.
-        // 위젯이 그려진 후 RenderBox에 접근하기 위해 post-frame 콜백을 사용합니다.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           final box = _imageRenderBox;
@@ -414,6 +433,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const double cropModeScale = 0.8;
     return Scaffold(
       appBar: AppBar(
         title: const Text('이미지 편집'),
@@ -441,46 +461,53 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
       body: Container(
         color: Colors.black,
         child: Center(
-          child: RepaintBoundary(
-            key: _captureKey,
-            child: RotatedBox(
-              quarterTurns: (_rotation / 90).round(),
-              child:
-                  _editedImageData != null
-                      ? GestureDetector(
-                        onPanStart:
-                            _isDrawing || _isCropping ? _onPanStart : null,
-                        onPanUpdate:
-                            _isDrawing || _isCropping ? _onPanUpdate : null,
-                        onPanEnd: _isDrawing || _isCropping ? _onPanEnd : null,
-                        behavior: HitTestBehavior.translucent,
-                        child: Stack(
-                          fit: StackFit.passthrough,
-                          alignment: Alignment.center,
-                          children: [
-                            Image.memory(
-                              _editedImageData!,
-                              key: _imageKey,
-                              fit: BoxFit.contain,
-                            ),
-                            if (_isDrawing)
-                              Positioned.fill(
-                                child: CustomPaint(
-                                  painter: DrawingPainter(
-                                    points: _drawingPoints,
+          child: GestureDetector(
+            onPanStart: _isDrawing || _isCropping ? _onPanStart : null,
+            onPanUpdate: _isDrawing || _isCropping ? _onPanUpdate : null,
+            onPanEnd: _isDrawing || _isCropping ? _onPanEnd : null,
+            behavior: HitTestBehavior.translucent,
+            child: RepaintBoundary(
+              key: _captureKey,
+              child: AnimatedScale(
+                scale: _isCropping ? cropModeScale : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: RotatedBox(
+                  quarterTurns: (_rotation / 90).round(),
+                  child:
+                      _editedImageData != null
+                          ? Stack(
+                            fit: StackFit.passthrough,
+                            alignment: Alignment.center,
+                            children: [
+                              Image.memory(
+                                _editedImageData!,
+                                key: _imageKey,
+                                fit: BoxFit.contain,
+                              ),
+                              if (_isDrawing)
+                                Positioned.fill(
+                                  child: CustomPaint(
+                                    painter: DrawingPainter(
+                                      points: _drawingPoints,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            if (_isCropping && _cropRect != null)
-                              Positioned.fill(
-                                child: CustomPaint(
-                                  painter: CropPainter(cropRect: _cropRect!),
+                              if (_isCropping && _cropRect != null)
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: CustomPaint(
+                                      painter: CropPainter(
+                                        cropRect: _cropRect!,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                          ],
-                        ),
-                      )
-                      : const CircularProgressIndicator(),
+                            ],
+                          )
+                          : const CircularProgressIndicator(),
+                ),
+              ),
             ),
           ),
         ),

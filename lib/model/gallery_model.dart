@@ -15,7 +15,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 
-class GalleryModel extends ChangeNotifier {
+class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
   List<Photo> _photos = [];
   List<Album> _albums = [];
   List<Photo> _favorites = [];
@@ -50,17 +50,157 @@ class GalleryModel extends ChangeNotifier {
     _initSharedPreferences();
     _loadData();
     PhotoManager.addChangeCallback(_handlePhotoChange);
+    PhotoManager.startChangeNotify();
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    PhotoManager.stopChangeNotify();
     PhotoManager.removeChangeCallback(_handlePhotoChange);
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      debugPrint(
+        'AutoRefreshDebugging 🔄 [AppLifecycle] 앱이 포그라운드로 돌아왔습니다. 새로고침을 실행합니다.',
+      );
+      if (!_isLoading) {
+        refreshGallery();
+      }
+    }
+  }
+
   void _handlePhotoChange(details) {
-    debugPrint('갤러리 변경 감지됨. 새로고침을 시작합니다.');
-    refreshGallery();
+    if (_isLoading) {
+      debugPrint(
+        'AutoRefreshDebugging ⚠️ [PhotoManager] 이미 새로고침이 진행 중이므로, 이번 변경 알림은 무시합니다.',
+      );
+      return;
+    }
+    debugPrint(
+      'AutoRefreshDebugging 📸 [PhotoManager] 갤러리 변경 감지됨! 증분 업데이트를 시작합니다.',
+    );
+    _applyChanges(details);
+  }
+
+  Future<void> _applyChanges(details) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // 1. 삭제된 사진 처리
+      final List<AssetEntity> removedAssets = List.from(details.removedAssets);
+      final removedIds = removedAssets.map((e) => e.id).toSet();
+      if (removedIds.isNotEmpty) {
+        _photos.removeWhere((photo) => removedIds.contains(photo.id));
+        _favorites.removeWhere((photo) => removedIds.contains(photo.id));
+        debugPrint(
+          'AutoRefreshDebugging 🗑️ [Incremental] ${removedIds.length}개의 사진 제거 완료.',
+        );
+      }
+
+      // 2. 추가된 사진 처리
+      final List<AssetEntity> insertedAssets = List.from(
+        details.insertedAssets,
+      );
+      if (insertedAssets.isNotEmpty) {
+        final List<Photo> newPhotos = [];
+        for (final asset in insertedAssets) {
+          final photo = await _convertAssetToPhoto(asset);
+          if (photo != null) {
+            newPhotos.add(photo);
+          }
+        }
+
+        if (newPhotos.isNotEmpty) {
+          // 새로 추가된 사진에만 메타데이터 적용
+          final favoriteIds =
+              (_prefs.getStringList(_favoritesKey) ?? []).toSet();
+          final memoData = _prefs.getString(_memoKey);
+          final voiceMemoData = _prefs.getString(_voiceMemoKey);
+          final Map<String, dynamic> memoMap =
+              memoData != null && memoData.isNotEmpty
+                  ? json.decode(memoData)
+                  : {};
+          final Map<String, dynamic> voiceMemoMap =
+              voiceMemoData != null && voiceMemoData.isNotEmpty
+                  ? json.decode(voiceMemoData)
+                  : {};
+
+          final List<Photo> newFavorites = [];
+
+          for (final photo in newPhotos) {
+            // 즐겨찾기 적용
+            if (favoriteIds.contains(photo.id)) {
+              photo.isFavorite = true;
+              newFavorites.add(photo);
+            }
+            // 텍스트 메모 적용
+            if (memoMap.containsKey(photo.id)) {
+              photo.memo = memoMap[photo.id]?.toString();
+            }
+            // 음성 메모 적용
+            if (voiceMemoMap.containsKey(photo.id)) {
+              final voiceMemoPath = voiceMemoMap[photo.id]?.toString();
+              if (voiceMemoPath != null) {
+                final file = File(voiceMemoPath);
+                if (await file.exists()) {
+                  photo.voiceMemoPath = voiceMemoPath;
+                }
+              }
+            }
+          }
+
+          // 성능 최적화: 전체를 재정렬하는 대신, 새 사진들을 목록 맨 앞에 추가
+          newPhotos.sort((a, b) => b.date.compareTo(a.date));
+          _photos.insertAll(0, newPhotos);
+
+          if (newFavorites.isNotEmpty) {
+            newFavorites.sort((a, b) => b.date.compareTo(a.date));
+            _favorites.insertAll(0, newFavorites);
+          }
+
+          debugPrint(
+            'AutoRefreshDebugging ✨ [Incremental] ${newPhotos.length}개의 사진 추가 완료.',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        'AutoRefreshDebugging ❌ [Incremental] 증분 업데이트 중 오류 발생: $e. 전체 새로고침으로 대체합니다.',
+      );
+      await refreshGallery();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+      debugPrint('AutoRefreshDebugging ✅ [Incremental] 증분 업데이트 종료.');
+    }
+  }
+
+  Future<Photo?> _convertAssetToPhoto(AssetEntity asset) async {
+    try {
+      final file = await asset.file;
+      if (file == null || !await file.exists()) {
+        return null;
+      }
+      return Photo(
+        id: asset.id,
+        path: file.path,
+        date: asset.createDateTime,
+        asset: asset,
+        isVideo: asset.type == AssetType.video,
+      );
+    } catch (e) {
+      debugPrint(
+        'AutoRefreshDebugging ❌ [Converter] Asset을 Photo로 변환 중 오류: $e',
+      );
+      return null;
+    }
   }
 
   Future<void> _initSharedPreferences() async {
@@ -371,7 +511,7 @@ class GalleryModel extends ChangeNotifier {
 
   Future<bool> _deletePhotoAndroid(Photo photo) async {
     try {
-      debugPrint('Android 삭제 시도');
+      debugPrint('AutoRefreshDebugging Android 삭제 시도');
 
       await MediaStore.ensureInitialized();
 
@@ -381,11 +521,11 @@ class GalleryModel extends ChangeNotifier {
             photo.asset!.id,
           ]);
           if (result.isNotEmpty) {
-            debugPrint('PhotoManager 삭제 성공: $result');
+            debugPrint('AutoRefreshDebugging PhotoManager 삭제 성공: $result');
             return true;
           }
         } catch (e) {
-          debugPrint('PhotoManager 삭제 실패: $e');
+          debugPrint('AutoRefreshDebugging PhotoManager 삭제 실패: $e');
         }
       }
 
@@ -403,7 +543,7 @@ class GalleryModel extends ChangeNotifier {
         debugPrint('파일 시스템 삭제 실패: $e');
       }
     } catch (e) {
-      debugPrint('Android 삭제 시도 실패: $e');
+      debugPrint('AutoRefreshDebugging Android 삭제 시도 실패: $e');
     }
 
     return false;
@@ -411,14 +551,14 @@ class GalleryModel extends ChangeNotifier {
 
   Future<bool> _deletePhotoIOS(Photo photo) async {
     try {
-      debugPrint('iOS 삭제 시도');
+      debugPrint('AutoRefreshDebugging iOS 삭제 시도');
 
       if (photo.asset != null) {
         final List<String> result = await PhotoManager.editor.deleteWithIds([
           photo.asset!.id,
         ]);
         if (result.isNotEmpty) {
-          debugPrint('iOS PhotoManager 삭제 성공: $result');
+          debugPrint('AutoRefreshDebugging iOS PhotoManager 삭제 성공: $result');
           return true;
         }
       } else {
@@ -435,7 +575,7 @@ class GalleryModel extends ChangeNotifier {
         }
       }
     } catch (e) {
-      debugPrint('iOS 삭제 시도 실패: $e');
+      debugPrint('AutoRefreshDebugging iOS 삭제 시도 실패: $e');
     }
 
     return false;
@@ -885,12 +1025,14 @@ class GalleryModel extends ChangeNotifier {
         }
       }
 
-      debugPrint('PhotoManager.getAssetPathList 호출 시작...');
+      debugPrint('AutoRefreshDebugging PhotoManager.getAssetPathList 호출 시작...');
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
         type: RequestType.all,
       );
 
-      debugPrint('PhotoManager.getAssetPathList 결과: ${albums.length}개의 앨범');
+      debugPrint(
+        'AutoRefreshDebugging PhotoManager.getAssetPathList 결과: ${albums.length}개의 앨범',
+      );
 
       // 이미지/동영상 파일만 포함된 앨범만 필터링
       final List<AssetPathEntity> validAlbums = [];
@@ -928,22 +1070,22 @@ class GalleryModel extends ChangeNotifier {
 
               if (validExtensions.contains(extension)) {
                 validAlbums.add(album);
-                debugPrint('유효한 앨범 추가: ${album.name}');
+                debugPrint('AutoRefreshDebugging 유효한 앨범 추가: ${album.name}');
               } else {
                 debugPrint(
-                  '지원하지 않는 파일 형식이 포함된 앨범 제외: ${album.name} (${file.path})',
+                  'AutoRefreshDebugging 지원하지 않는 파일 형식이 포함된 앨범 제외: ${album.name} (${file.path})',
                 );
               }
             }
           }
         } catch (e) {
-          debugPrint('앨범 검증 중 오류 발생: ${album.name} - $e');
+          debugPrint('AutoRefreshDebugging 앨범 검증 중 오류 발생: ${album.name} - $e');
           // 오류가 발생한 앨범은 제외
           continue;
         }
       }
 
-      debugPrint('필터링 후 유효한 앨범 수: ${validAlbums.length}개');
+      debugPrint('AutoRefreshDebugging 필터링 후 유효한 앨범 수: ${validAlbums.length}개');
 
       // 캐시 업데이트
       _cachedDeviceAlbums = validAlbums;
@@ -951,7 +1093,7 @@ class GalleryModel extends ChangeNotifier {
 
       return validAlbums;
     } catch (e) {
-      debugPrint('기기 앨범 로드 중 오류 발생: $e');
+      debugPrint('AutoRefreshDebugging 기기 앨범 로드 중 오류 발생: $e');
       return _cachedDeviceAlbums ?? [];
     }
   }
@@ -998,7 +1140,7 @@ class GalleryModel extends ChangeNotifier {
             final validExtensions = [...imageExtensions, ...videoExtensions];
 
             if (!validExtensions.contains(extension)) {
-              debugPrint('지원하지 않는 파일 형식 제외: ${file.path}');
+              debugPrint('AutoRefreshDebugging 지원하지 않는 파일 형식 제외: ${file.path}');
               continue;
             }
 
@@ -1012,14 +1154,14 @@ class GalleryModel extends ChangeNotifier {
             photos.add(photo);
           }
         } catch (e) {
-          debugPrint('앨범 사진 로딩 중 오류 발생: ${asset.id} - $e');
+          debugPrint('AutoRefreshDebugging 앨범 사진 로딩 중 오류 발생: ${asset.id} - $e');
           // 개별 사진 로딩 실패는 무시하고 계속 진행
           continue;
         }
       }
       return photos;
     } catch (e) {
-      debugPrint('기기 앨범 사진 로드 중 오류 발생: $e');
+      debugPrint('AutoRefreshDebugging 기기 앨범 사진 로드 중 오류 발생: $e');
       return [];
     }
   }
@@ -1029,7 +1171,7 @@ class GalleryModel extends ChangeNotifier {
     try {
       // 캐시된 썸네일이 있는 경우 캐시된 데이터 반환
       if (_cachedThumbnails.containsKey(album.id)) {
-        debugPrint('캐시된 썸네일 사용: ${album.name}');
+        debugPrint('AutoRefreshDebugging 캐시된 썸네일 사용: ${album.name}');
         return _cachedThumbnails[album.id];
       }
 
@@ -1070,7 +1212,9 @@ class GalleryModel extends ChangeNotifier {
         final validExtensions = [...imageExtensions, ...videoExtensions];
 
         if (!validExtensions.contains(extension)) {
-          debugPrint('지원하지 않는 파일 형식 제외 (썸네일): ${file.path}');
+          debugPrint(
+            'AutoRefreshDebugging 지원하지 않는 파일 형식 제외 (썸네일): ${file.path}',
+          );
           return null;
         }
 
@@ -1089,11 +1233,11 @@ class GalleryModel extends ChangeNotifier {
 
         return photo;
       } catch (e) {
-        debugPrint('앨범 썸네일 로드 중 오류 발생: ${asset.id} - $e');
+        debugPrint('AutoRefreshDebugging 앨범 썸네일 로드 중 오류 발생: ${asset.id} - $e');
         return null;
       }
     } catch (e) {
-      debugPrint('앨범 썸네일 로드 중 오류 발생: $e');
+      debugPrint('AutoRefreshDebugging 앨범 썸네일 로드 중 오류 발생: $e');
       return null;
     }
   }
@@ -1153,14 +1297,16 @@ class GalleryModel extends ChangeNotifier {
       return false;
     }
 
-    debugPrint('${photoIds.length}개의 사진 삭제 시작');
+    debugPrint(
+      'AutoRefreshDebugging 🗑️ [GalleryModel] ${photoIds.length}개의 사진 삭제 시작',
+    );
 
     final originalPhotoList = List<Photo>.from(_photos);
     final photosToDelete =
         photos.where((p) => photoIds.contains(p.id)).toList();
 
     if (photosToDelete.length != photoIds.length) {
-      debugPrint('일부 사진을 찾을 수 없습니다');
+      debugPrint('AutoRefreshDebugging 일부 사진을 찾을 수 없습니다');
       return false;
     }
 
@@ -1190,14 +1336,16 @@ class GalleryModel extends ChangeNotifier {
         await _savePhotos();
         notifyListeners();
 
-        debugPrint('${photoIds.length}개의 사진 삭제 완료');
+        debugPrint(
+          'AutoRefreshDebugging 🗑️ [GalleryModel] ${photoIds.length}개의 사진 삭제 완료',
+        );
         return true;
       } else {
-        debugPrint('시스템 레벨 삭제 실패');
+        debugPrint('AutoRefreshDebugging 시스템 레벨 삭제 실패');
         return false;
       }
     } catch (e) {
-      debugPrint('다중 사진 삭제 중 예외 발생: $e');
+      debugPrint('AutoRefreshDebugging 다중 사진 삭제 중 예외 발생: $e');
       // 롤백
       _photos.clear();
       _photos.addAll(originalPhotoList);
@@ -1209,7 +1357,7 @@ class GalleryModel extends ChangeNotifier {
 
   Future<bool> _deleteMultiplePhotosAndroid(List<Photo> photos) async {
     try {
-      debugPrint('Android 다중 삭제 시도');
+      debugPrint('AutoRefreshDebugging 🤖 [Android] Android 다중 삭제 시도');
 
       await MediaStore.ensureInitialized();
 
@@ -1222,15 +1370,17 @@ class GalleryModel extends ChangeNotifier {
 
       if (assetIds.isNotEmpty) {
         try {
-          final List<String> result = await PhotoManager.editor.deleteWithIds(
-            assetIds,
-          );
+          final result = await PhotoManager.editor.deleteWithIds(assetIds);
           if (result.isNotEmpty) {
-            debugPrint('PhotoManager 다중 삭제 성공: ${result.length}개');
+            debugPrint(
+              'AutoRefreshDebugging 🤖 [Android] PhotoManager 다중 삭제 성공: ${result.length}개',
+            );
             return true;
           }
         } catch (e) {
-          debugPrint('PhotoManager 다중 삭제 실패: $e');
+          debugPrint(
+            'AutoRefreshDebugging 🤖 [Android] PhotoManager 다중 삭제 실패: $e',
+          );
         }
       }
 
@@ -1243,21 +1393,23 @@ class GalleryModel extends ChangeNotifier {
             await file.delete();
           }
         } catch (e) {
-          debugPrint('파일 삭제 실패: ${photo.path} - $e');
+          debugPrint(
+            'AutoRefreshDebugging ❌ [Android] 파일 삭제 실패: ${photo.path} - $e',
+          );
           allDeleted = false;
         }
       }
 
       return allDeleted;
     } catch (e) {
-      debugPrint('Android 다중 삭제 시도 실패: $e');
+      debugPrint('AutoRefreshDebugging 🤖 [Android] Android 다중 삭제 시도 실패: $e');
       return false;
     }
   }
 
   Future<bool> _deleteMultiplePhotosIOS(List<Photo> photos) async {
     try {
-      debugPrint('iOS 다중 삭제 시도');
+      debugPrint('AutoRefreshDebugging 🍎 [iOS] iOS 다중 삭제 시도');
 
       // PhotoManager를 통한 일괄 삭제 시도
       final assetIds =
@@ -1268,15 +1420,17 @@ class GalleryModel extends ChangeNotifier {
 
       if (assetIds.isNotEmpty) {
         try {
-          final List<String> result = await PhotoManager.editor.deleteWithIds(
-            assetIds,
-          );
+          final result = await PhotoManager.editor.deleteWithIds(assetIds);
           if (result.isNotEmpty) {
-            debugPrint('iOS PhotoManager 다중 삭제 성공: ${result.length}개');
+            debugPrint(
+              'AutoRefreshDebugging 🍎 [iOS] iOS PhotoManager 다중 삭제 성공: ${result.length}개',
+            );
             return true;
           }
         } catch (e) {
-          debugPrint('iOS PhotoManager 다중 삭제 실패: $e');
+          debugPrint(
+            'AutoRefreshDebugging 🍎 [iOS] iOS PhotoManager 다중 삭제 실패: $e',
+          );
         }
       }
 
@@ -1289,14 +1443,16 @@ class GalleryModel extends ChangeNotifier {
             await file.delete();
           }
         } catch (e) {
-          debugPrint('iOS 파일 삭제 실패: ${photo.path} - $e');
+          debugPrint(
+            'AutoRefreshDebugging 🍎 [iOS] iOS 파일 삭제 실패: ${photo.path} - $e',
+          );
           allDeleted = false;
         }
       }
 
       return allDeleted;
     } catch (e) {
-      debugPrint('iOS 다중 삭제 시도 실패: $e');
+      debugPrint('AutoRefreshDebugging 🍎 [iOS] iOS 다중 삭제 시도 실패: $e');
       return false;
     }
   }
@@ -1304,7 +1460,7 @@ class GalleryModel extends ChangeNotifier {
   // 수동 새로고침 (기존 메소드 개선)
   Future<void> refreshGallery() async {
     try {
-      debugPrint('수동 갤러리 새로고침 시작');
+      debugPrint('AutoRefreshDebugging ✅ [GalleryModel] 갤러리 새로고침 시작...');
 
       // 기존 즐겨찾기 ID 목록 백업
       final favoriteIds = _favorites.map((p) => p.id).toList();
@@ -1324,10 +1480,12 @@ class GalleryModel extends ChangeNotifier {
       await _loadFavorites();
 
       _isLoading = false;
-      debugPrint('갤러리 새로고침 완료');
+      debugPrint(
+        'AutoRefreshDebugging ✅ [GalleryModel] 갤러리 새로고침 완료! 총 사진 개수: ${_photos.length}',
+      );
       notifyListeners();
     } catch (e) {
-      debugPrint('수동 갤러리 새로고침 중 오류: $e');
+      debugPrint('AutoRefreshDebugging ❌ [GalleryModel] 갤러리 새로고침 중 오류: $e');
       _isLoading = false;
       notifyListeners();
     }
