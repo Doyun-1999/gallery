@@ -5,6 +5,24 @@ import 'package:gallery_memo/widget/photo_grid_item.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 
+// 파일 수정 시간을 포함한 커스텀 FileImage 클래스
+class _UniqueFileImage extends FileImage {
+  final int modifiedTime;
+
+  const _UniqueFileImage(super.file, this.modifiedTime);
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType) return false;
+    return other is _UniqueFileImage &&
+        other.file.path == file.path &&
+        other.modifiedTime == modifiedTime;
+  }
+
+  @override
+  int get hashCode => Object.hash(file.path, modifiedTime);
+}
+
 class GalleryScreen extends StatefulWidget {
   final bool isSelectMode;
   final Set<String> selectedPhotoIds;
@@ -27,8 +45,6 @@ class _GalleryScreenState extends State<GalleryScreen>
     with AutomaticKeepAliveClientMixin<GalleryScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
-  final Map<String, ImageProvider> _imageCache = {};
-  static const int _maxCacheSize = 50;
   final Set<String> _errorPhotoIds = {};
 
   @override
@@ -43,27 +59,72 @@ class _GalleryScreenState extends State<GalleryScreen>
   @override
   void dispose() {
     _scrollController.dispose();
-    _imageCache.clear();
     super.dispose();
   }
 
   ImageProvider _getImageProvider(String path) {
-    if (!_imageCache.containsKey(path)) {
-      if (_imageCache.length >= _maxCacheSize) {
-        final oldestKey = _imageCache.keys.first;
-        _imageCache.remove(oldestKey);
-      }
+    // ResizeImage 성능 이점을 유지하면서 캐시 문제 해결
+    // 파일 수정 시간을 포함한 unique FileImage 생성
+    final file = File(path);
+    final modTime = _getFileModTime(path);
 
+    // 파일 수정 시간이 바뀌면 다른 FileImage로 인식되어 캐시가 새로 생성됨
+    final uniqueFileImage = _UniqueFileImage(file, modTime);
+
+    return ResizeImage(
+      uniqueFileImage,
+      width: 200,
+      allowUpscaling: false,
+      policy: ResizeImagePolicy.fit,
+    );
+  }
+
+  // 파일의 수정 시간을 가져오는 메서드
+  Future<int> _getFileModifiedTime(String path) async {
+    try {
       final file = File(path);
-      final imageProvider = ResizeImage(
-        FileImage(file),
-        width: 200,
-        allowUpscaling: false,
-        policy: ResizeImagePolicy.fit,
-      );
-      _imageCache[path] = imageProvider;
+      if (await file.exists()) {
+        final stat = await file.stat();
+        return stat.modified.millisecondsSinceEpoch;
+      }
+    } catch (e) {
+      debugPrint('파일 수정 시간 가져오기 실패: $e');
     }
-    return _imageCache[path]!;
+    return 0;
+  }
+
+  // 파일의 수정 시간을 가져오는 메서드 (위젯 key용)
+  int _getFileModTime(String path) {
+    try {
+      final file = File(path);
+      if (file.existsSync()) {
+        return file.statSync().modified.millisecondsSinceEpoch;
+      }
+    } catch (e) {
+      // 오류 시 현재 시간 반환
+    }
+    return DateTime.now().millisecondsSinceEpoch;
+  }
+
+  // 특정 이미지의 캐시를 무효화하는 메서드
+  void _invalidateImageCache(String path) {
+    final imageProvider = FileImage(File(path));
+    PaintingBinding.instance.imageCache.evict(imageProvider);
+
+    // ResizeImage로 감싼 것도 제거
+    final resizeImageProvider = ResizeImage(
+      FileImage(File(path)),
+      width: 200,
+      allowUpscaling: false,
+      policy: ResizeImagePolicy.fit,
+    );
+    PaintingBinding.instance.imageCache.evict(resizeImageProvider);
+  }
+
+  // 모든 이미지 캐시를 무효화하는 메서드
+  void _clearImageCache() {
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
   }
 
   void _onScroll() {
@@ -237,7 +298,9 @@ class _GalleryScreenState extends State<GalleryScreen>
                                 });
                               }
                             },
-                            key: ValueKey(photo.id),
+                            key: ValueKey(
+                              '${photo.id}_${photo.path}_${_getFileModTime(photo.path)}',
+                            ),
                           ),
                         ),
                       );

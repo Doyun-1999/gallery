@@ -49,16 +49,12 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
   GalleryModel() {
     _initSharedPreferences();
     _loadData();
-    PhotoManager.addChangeCallback(_handlePhotoChange);
-    PhotoManager.startChangeNotify();
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    PhotoManager.stopChangeNotify();
-    PhotoManager.removeChangeCallback(_handlePhotoChange);
     super.dispose();
   }
 
@@ -72,134 +68,6 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
       if (!_isLoading) {
         refreshGallery();
       }
-    }
-  }
-
-  void _handlePhotoChange(details) {
-    if (_isLoading) {
-      debugPrint(
-        'AutoRefreshDebugging ⚠️ [PhotoManager] 이미 새로고침이 진행 중이므로, 이번 변경 알림은 무시합니다.',
-      );
-      return;
-    }
-    debugPrint(
-      'AutoRefreshDebugging 📸 [PhotoManager] 갤러리 변경 감지됨! 증분 업데이트를 시작합니다.',
-    );
-    _applyChanges(details);
-  }
-
-  Future<void> _applyChanges(details) async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      // 1. 삭제된 사진 처리
-      final List<AssetEntity> removedAssets = List.from(details.removedAssets);
-      final removedIds = removedAssets.map((e) => e.id).toSet();
-      if (removedIds.isNotEmpty) {
-        _photos.removeWhere((photo) => removedIds.contains(photo.id));
-        _favorites.removeWhere((photo) => removedIds.contains(photo.id));
-        debugPrint(
-          'AutoRefreshDebugging 🗑️ [Incremental] ${removedIds.length}개의 사진 제거 완료.',
-        );
-      }
-
-      // 2. 추가된 사진 처리
-      final List<AssetEntity> insertedAssets = List.from(
-        details.insertedAssets,
-      );
-      if (insertedAssets.isNotEmpty) {
-        final List<Photo> newPhotos = [];
-        for (final asset in insertedAssets) {
-          final photo = await _convertAssetToPhoto(asset);
-          if (photo != null) {
-            newPhotos.add(photo);
-          }
-        }
-
-        if (newPhotos.isNotEmpty) {
-          // 새로 추가된 사진에만 메타데이터 적용
-          final favoriteIds =
-              (_prefs.getStringList(_favoritesKey) ?? []).toSet();
-          final memoData = _prefs.getString(_memoKey);
-          final voiceMemoData = _prefs.getString(_voiceMemoKey);
-          final Map<String, dynamic> memoMap =
-              memoData != null && memoData.isNotEmpty
-                  ? json.decode(memoData)
-                  : {};
-          final Map<String, dynamic> voiceMemoMap =
-              voiceMemoData != null && voiceMemoData.isNotEmpty
-                  ? json.decode(voiceMemoData)
-                  : {};
-
-          final List<Photo> newFavorites = [];
-
-          for (final photo in newPhotos) {
-            // 즐겨찾기 적용
-            if (favoriteIds.contains(photo.id)) {
-              photo.isFavorite = true;
-              newFavorites.add(photo);
-            }
-            // 텍스트 메모 적용
-            if (memoMap.containsKey(photo.id)) {
-              photo.memo = memoMap[photo.id]?.toString();
-            }
-            // 음성 메모 적용
-            if (voiceMemoMap.containsKey(photo.id)) {
-              final voiceMemoPath = voiceMemoMap[photo.id]?.toString();
-              if (voiceMemoPath != null) {
-                final file = File(voiceMemoPath);
-                if (await file.exists()) {
-                  photo.voiceMemoPath = voiceMemoPath;
-                }
-              }
-            }
-          }
-
-          // 성능 최적화: 전체를 재정렬하는 대신, 새 사진들을 목록 맨 앞에 추가
-          newPhotos.sort((a, b) => b.date.compareTo(a.date));
-          _photos.insertAll(0, newPhotos);
-
-          if (newFavorites.isNotEmpty) {
-            newFavorites.sort((a, b) => b.date.compareTo(a.date));
-            _favorites.insertAll(0, newFavorites);
-          }
-
-          debugPrint(
-            'AutoRefreshDebugging ✨ [Incremental] ${newPhotos.length}개의 사진 추가 완료.',
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint(
-        'AutoRefreshDebugging ❌ [Incremental] 증분 업데이트 중 오류 발생: $e. 전체 새로고침으로 대체합니다.',
-      );
-      await refreshGallery();
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-      debugPrint('AutoRefreshDebugging ✅ [Incremental] 증분 업데이트 종료.');
-    }
-  }
-
-  Future<Photo?> _convertAssetToPhoto(AssetEntity asset) async {
-    try {
-      final file = await asset.file;
-      if (file == null || !await file.exists()) {
-        return null;
-      }
-      return Photo(
-        id: asset.id,
-        path: file.path,
-        date: asset.createDateTime,
-        asset: asset,
-        isVideo: asset.type == AssetType.video,
-      );
-    } catch (e) {
-      debugPrint(
-        'AutoRefreshDebugging ❌ [Converter] Asset을 Photo로 변환 중 오류: $e',
-      );
-      return null;
     }
   }
 
@@ -527,20 +395,6 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
         } catch (e) {
           debugPrint('AutoRefreshDebugging PhotoManager 삭제 실패: $e');
         }
-      }
-
-      try {
-        final file = File(photo.path);
-        if (await file.exists()) {
-          await file.delete();
-          debugPrint('파일 시스템 삭제 성공');
-          return true;
-        } else {
-          debugPrint('파일이 존재하지 않음 - 이미 삭제됨으로 간주');
-          return true;
-        }
-      } catch (e) {
-        debugPrint('파일 시스템 삭제 실패: $e');
       }
     } catch (e) {
       debugPrint('AutoRefreshDebugging Android 삭제 시도 실패: $e');
@@ -1016,22 +870,31 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
   // 기기 앨범 목록을 가져오는 메서드
   Future<List<AssetPathEntity>> getDeviceAlbums() async {
     try {
+      debugPrint('GalleryModel: getDeviceAlbums() 호출됨');
+
       // 캐시된 데이터가 있고 유효한 경우 캐시된 데이터 반환
       if (_cachedDeviceAlbums != null && _lastDeviceAlbumsLoadTime != null) {
         final now = DateTime.now();
         if (now.difference(_lastDeviceAlbumsLoadTime!) < _cacheDuration) {
-          debugPrint('캐시된 기기 앨범 목록 사용');
-          return _cachedDeviceAlbums!;
+          debugPrint(
+            'GalleryModel: 캐시된 기기 앨범 목록 사용 (${_cachedDeviceAlbums!.length}개)',
+          );
+          // 캐시된 데이터가 비어있지 않은 경우에만 사용
+          if (_cachedDeviceAlbums!.isNotEmpty) {
+            return _cachedDeviceAlbums!;
+          } else {
+            debugPrint('GalleryModel: 캐시된 앨범이 비어있으므로 새로 로드');
+          }
         }
       }
 
-      debugPrint('AutoRefreshDebugging PhotoManager.getAssetPathList 호출 시작...');
+      debugPrint('GalleryModel: PhotoManager.getAssetPathList 호출 시작...');
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
         type: RequestType.all,
       );
 
       debugPrint(
-        'AutoRefreshDebugging PhotoManager.getAssetPathList 결과: ${albums.length}개의 앨범',
+        'GalleryModel: PhotoManager.getAssetPathList 결과: ${albums.length}개의 앨범',
       );
 
       // 이미지/동영상 파일만 포함된 앨범만 필터링
@@ -1070,30 +933,63 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
 
               if (validExtensions.contains(extension)) {
                 validAlbums.add(album);
-                debugPrint('AutoRefreshDebugging 유효한 앨범 추가: ${album.name}');
+                debugPrint('GalleryModel: 유효한 앨범 추가: ${album.name}');
               } else {
                 debugPrint(
-                  'AutoRefreshDebugging 지원하지 않는 파일 형식이 포함된 앨범 제외: ${album.name} (${file.path})',
+                  'GalleryModel: 지원하지 않는 파일 형식이 포함된 앨범 제외: ${album.name} (${file.path})',
                 );
               }
             }
           }
         } catch (e) {
-          debugPrint('AutoRefreshDebugging 앨범 검증 중 오류 발생: ${album.name} - $e');
+          debugPrint('GalleryModel: 앨범 검증 중 오류 발생: ${album.name} - $e');
           // 오류가 발생한 앨범은 제외
           continue;
         }
       }
 
-      debugPrint('AutoRefreshDebugging 필터링 후 유효한 앨범 수: ${validAlbums.length}개');
+      debugPrint('GalleryModel: 필터링 후 유효한 앨범 수: ${validAlbums.length}개');
+
+      // 👇 추가: 필수 앨범만 남기기 -------------------------------------------
+      // 필요하지 않은 자동 분류(앨범) 생성을 방지하기 위해,
+      // 최소한으로 보여줄 앨범 이름을 정의합니다. 원하는 경우 이 목록을 수정하세요.
+      const Set<String> essentialAlbumNames = {
+        // Android 기본
+        'Camera',
+        'Download',
+        'Downloads',
+        'Pictures',
+        'Movies',
+        'Videos',
+        'Screenshots',
+        // iOS 기본
+        'Recents',
+        '최근 항목',
+        '스크린샷',
+        // 기타 필요 시 추가
+      };
+
+      final List<AssetPathEntity> essentialAlbums =
+          validAlbums
+              .where((album) => essentialAlbumNames.contains(album.name))
+              .toList();
+
+      debugPrint('GalleryModel: 필수 앨범 필터링 결과: ${essentialAlbums.length}개');
+
+      // 필터링 결과가 비어있으면, 기존 validAlbums 를 그대로 사용 (안전 장치)
+      final List<AssetPathEntity> finalAlbums =
+          essentialAlbums.isNotEmpty ? essentialAlbums : validAlbums;
+      // 👆 필수 앨범 필터 끝 -----------------------------------------------
+
+      debugPrint('GalleryModel: 최종 앨범 수: ${finalAlbums.length}개');
 
       // 캐시 업데이트
-      _cachedDeviceAlbums = validAlbums;
+      _cachedDeviceAlbums = finalAlbums;
       _lastDeviceAlbumsLoadTime = DateTime.now();
 
-      return validAlbums;
+      return finalAlbums;
     } catch (e) {
-      debugPrint('AutoRefreshDebugging 기기 앨범 로드 중 오류 발생: $e');
+      debugPrint('GalleryModel: 기기 앨범 로드 중 오류 발생: $e');
       return _cachedDeviceAlbums ?? [];
     }
   }
@@ -1244,9 +1140,15 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
 
   // 캐시 초기화
   void clearDeviceAlbumsCache() {
+    debugPrint('GalleryModel: clearDeviceAlbumsCache() 호출됨');
+    debugPrint('GalleryModel: 캐시된 앨범 수: ${_cachedDeviceAlbums?.length ?? 0}');
+    debugPrint('GalleryModel: 캐시된 썸네일 수: ${_cachedThumbnails.length}');
+
     _cachedDeviceAlbums = null;
     _cachedThumbnails.clear();
     _lastDeviceAlbumsLoadTime = null;
+
+    debugPrint('GalleryModel: 앨범 캐시 초기화 완료');
   }
 
   // 선택된 이미지 ID들을 반환하는 getter
@@ -1470,6 +1372,10 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
       _photos.clear();
       _cachedThumbnails.clear();
       _totalPhotoCount = null;
+
+      // 앨범 캐시도 초기화 (중요!) - 앨범 목록도 새로고침
+      clearDeviceAlbumsCache();
+
       notifyListeners();
 
       // 기기 갤러리에서 새로운 사진 로드
@@ -1489,5 +1395,48 @@ class GalleryModel extends ChangeNotifier with WidgetsBindingObserver {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  // 이미지 편집 후 사용할 수 있는 가벼운 새로고침 (앨범 캐시 유지)
+  Future<void> refreshPhotosOnly() async {
+    try {
+      debugPrint('AutoRefreshDebugging ✅ [GalleryModel] 사진만 새로고침 시작...');
+
+      // 기존 즐겨찾기 ID 목록 백업
+      final favoriteIds = _favorites.map((p) => p.id).toList();
+
+      _isLoading = true;
+      _currentPage = 0;
+      _photos.clear();
+      _cachedThumbnails.clear();
+      _totalPhotoCount = null;
+
+      // 앨범 캐시는 유지 (중요!)
+      // clearDeviceAlbumsCache() 호출하지 않음
+
+      notifyListeners();
+
+      // 기기 갤러리에서 새로운 사진 로드
+      await loadDevicePhotos(favoriteIds);
+
+      // 메모와 즐겨찾기 다시 로드
+      await _loadMemos();
+      await _loadFavorites();
+
+      _isLoading = false;
+      debugPrint(
+        'AutoRefreshDebugging ✅ [GalleryModel] 사진만 새로고침 완료! 총 사진 개수: ${_photos.length}',
+      );
+      notifyListeners();
+    } catch (e) {
+      debugPrint('AutoRefreshDebugging ❌ [GalleryModel] 사진만 새로고침 중 오류: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // 이미지 캐시 무효화를 위한 메서드
+  void invalidateImageCache() {
+    notifyListeners();
   }
 }

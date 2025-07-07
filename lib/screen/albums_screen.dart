@@ -25,6 +25,7 @@ class _AlbumsScreenState extends State<AlbumsScreen>
   final Map<String, Photo?> _albumThumbnails = {};
   bool _isLoading = false;
   bool _isInitialized = false;
+  GalleryModel? _galleryModel;
 
   @override
   bool get wantKeepAlive => true;
@@ -35,8 +36,67 @@ class _AlbumsScreenState extends State<AlbumsScreen>
     _loadDeviceAlbums();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // GalleryModel 참조를 안전하게 저장
+    final galleryModel = Provider.of<GalleryModel>(context, listen: false);
+    if (_galleryModel != galleryModel) {
+      // 이전 리스너 제거
+      _galleryModel?.removeListener(_onGalleryModelChanged);
+
+      // 새로운 리스너 추가
+      _galleryModel = galleryModel;
+      _galleryModel?.addListener(_onGalleryModelChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    // 저장된 참조를 사용하여 리스너 제거
+    _galleryModel?.removeListener(_onGalleryModelChanged);
+    super.dispose();
+  }
+
+  void _onGalleryModelChanged() {
+    // 갤러리 모델이 변경되면 앨범 목록도 완전히 새로고침
+    if (mounted && _galleryModel != null) {
+      // 이미 로딩 중이면 무시
+      if (_isLoading) {
+        debugPrint('AlbumsScreen: 이미 로딩 중이므로 갤러리 모델 변경 무시');
+        return;
+      }
+
+      debugPrint('AlbumsScreen: 갤러리 모델 변경 감지, 앨범 목록 새로고침 시작');
+      debugPrint('AlbumsScreen: 현재 앨범 개수: ${_deviceAlbums.length}');
+
+      // 앨범 목록을 완전히 새로고침
+      setState(() {
+        _isInitialized = false;
+        _imageCache.clear();
+        _thumbnailCache.clear();
+        _albumThumbnails.clear();
+        _deviceAlbums.clear();
+      });
+
+      debugPrint('AlbumsScreen: 앨범 목록 초기화 완료, 앨범 개수: ${_deviceAlbums.length}');
+
+      // 즉시 로드 (지연 제거)
+      if (mounted) {
+        debugPrint('AlbumsScreen: _loadDeviceAlbums 즉시 호출');
+        _loadDeviceAlbums();
+      }
+    }
+  }
+
   Future<void> _loadDeviceAlbums() async {
-    if (_isInitialized) return;
+    if (_isInitialized || _isLoading) {
+      debugPrint('AlbumsScreen: _loadDeviceAlbums 중단 - 이미 초기화됨 또는 로딩 중');
+      return;
+    }
+
+    debugPrint('AlbumsScreen: 기기 앨범 로딩 시작...');
 
     setState(() {
       _isLoading = true;
@@ -44,34 +104,57 @@ class _AlbumsScreenState extends State<AlbumsScreen>
 
     try {
       final galleryModel = Provider.of<GalleryModel>(context, listen: false);
-      debugPrint('기기 앨범 로딩 시작...');
+      debugPrint('AlbumsScreen: GalleryModel.getDeviceAlbums() 호출 시작');
       _deviceAlbums = await galleryModel.getDeviceAlbums();
-      debugPrint('로드된 기기 앨범 수: ${_deviceAlbums.length}');
+      debugPrint('AlbumsScreen: 로드된 기기 앨범 수: ${_deviceAlbums.length}');
 
+      if (_deviceAlbums.isEmpty) {
+        debugPrint('AlbumsScreen: 기기 앨범이 없습니다.');
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      debugPrint('AlbumsScreen: 앨범 썸네일 로딩 시작...');
       // 각 앨범의 썸네일 로드
       for (var album in _deviceAlbums) {
-        final thumbnail = await galleryModel.getDeviceAlbumThumbnail(album);
-        _albumThumbnails[album.id] = thumbnail;
-        if (mounted) setState(() {});
+        if (!mounted) break; // 위젯이 dispose된 경우 중단
+
+        try {
+          debugPrint('AlbumsScreen: 앨범 썸네일 로딩 중: ${album.name}');
+          final thumbnail = await galleryModel.getDeviceAlbumThumbnail(album);
+          if (mounted) {
+            setState(() {
+              _albumThumbnails[album.id] = thumbnail;
+            });
+            debugPrint('AlbumsScreen: 앨범 썸네일 로딩 완료: ${album.name}');
+          }
+        } catch (e) {
+          debugPrint('AlbumsScreen: 앨범 썸네일 로드 실패: ${album.name} - $e');
+        }
       }
 
-      _isInitialized = true;
-    } catch (e) {
-      debugPrint('기기 앨범 로딩 중 오류 발생: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        setState(() {
+          _isInitialized = true;
+          _isLoading = false;
+        });
+        debugPrint('AlbumsScreen: 기기 앨범 로딩 완료 - 총 ${_deviceAlbums.length}개 앨범');
       }
-    }
+    } catch (e) {
+      debugPrint('AlbumsScreen: 기기 앨범 로딩 중 오류 발생: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
 
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+        // 오류가 발생해도 초기화는 완료로 표시
+        _isInitialized = true;
+      }
     }
   }
 
@@ -123,7 +206,12 @@ class _AlbumsScreenState extends State<AlbumsScreen>
   Widget build(BuildContext context) {
     return Consumer<GalleryModel>(
       builder: (context, galleryModel, child) {
-        final albums = galleryModel.albums;
+        // 갤러리 모델이 변경되면 앨범 목록도 업데이트
+        if (_galleryModel != galleryModel) {
+          debugPrint('AlbumsScreen: GalleryModel 인스턴스 변경 감지');
+          _galleryModel = galleryModel;
+          _onGalleryModelChanged();
+        }
 
         return Scaffold(
           body:
