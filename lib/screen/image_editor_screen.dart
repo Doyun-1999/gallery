@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_editor/image_editor.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:gallery_saver/gallery_saver.dart';
+import 'package:gallery_saver_plus/gallery_saver.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'package:gallery_memo/model/gallery_model.dart';
@@ -22,9 +22,9 @@ class ImageEditorScreen extends StatefulWidget {
 
 class _ImageEditorScreenState extends State<ImageEditorScreen> {
   late File _imageFile;
-  double _rotation = 0.0;
   bool _isDrawing = false;
   List<Offset?> _drawingPoints = [];
+  bool _isRotating = false; // 회전 처리 중 상태
 
   // --- 크롭 관련 상태 변수 ---
   bool _isCropping = false;
@@ -69,12 +69,12 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     });
   }
 
-  Future<void> _saveImage(bool overwrite) async {
+  Future<void> _saveImage() async {
     try {
       Uint8List imageDataToSave;
 
-      // 회전이나 그림 그리기가 적용된 경우 화면 캡처를 사용
-      if (_rotation != 0.0 || _drawingPoints.isNotEmpty) {
+      // 그림 그리기가 적용된 경우 화면 캡처를 사용
+      if (_drawingPoints.isNotEmpty) {
         final boundary =
             _captureKey.currentContext?.findRenderObject()
                 as RenderRepaintBoundary?;
@@ -107,97 +107,31 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         }
       }
 
-      if (overwrite) {
-        try {
-          // 파일이 존재하는지 확인
-          if (!await _imageFile.exists()) {
-            throw Exception('원본 파일을 찾을 수 없습니다.');
-          }
+      final tempDir = await getTemporaryDirectory();
+      final fileName = 'edited_${DateTime.now().millisecondsSinceEpoch}.png';
+      final tempFile = await File(
+        path.join(tempDir.path, fileName),
+      ).writeAsBytes(imageDataToSave);
+      final success = await GallerySaver.saveImage(tempFile.path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success == true ? '갤러리에 저장되었습니다.' : '갤러리 저장에 실패했습니다.',
+            ),
+          ),
+        );
 
-          // 파일을 직접 덮어쓰기
-          await _imageFile.writeAsBytes(imageDataToSave);
-
-          // 파일 메타데이터 업데이트 (갤러리 시스템에 변경사항 알림)
-          try {
-            await _imageFile.setLastModified(DateTime.now());
-          } catch (e) {
-            debugPrint('파일 메타데이터 업데이트 실패 (무시): $e');
-          }
-
-          setState(() {
-            _imageFile = File(_imageFile.path);
-            _editedImageData = imageDataToSave;
-          });
-          await _loadImage();
-
-          // 갤러리 모델 새로고침 - 변경된 파일이 갤러리에 반영되도록
+        if (success == true) {
           final galleryModel = Provider.of<GalleryModel>(
             context,
             listen: false,
           );
+          // refreshGallery를 사용하여 앨범 캐시도 함께 초기화
           await galleryModel.refreshGallery();
-
-          // 변경된 파일의 ImageCache 제거 (더 확실한 반영을 위해)
-          try {
-            // 기본 FileImage 캐시 제거
-            final imageProvider = FileImage(_imageFile);
-            PaintingBinding.instance.imageCache.evict(imageProvider);
-
-            // ResizeImage 캐시도 제거 (gallery_screen에서 사용하는 형태)
-            final resizeImageProvider = ResizeImage(
-              imageProvider,
-              width: 200,
-              allowUpscaling: false,
-              policy: ResizeImagePolicy.fit,
-            );
-            PaintingBinding.instance.imageCache.evict(resizeImageProvider);
-          } catch (e) {
-            debugPrint('이미지 캐시 제거 실패 (무시): $e');
-          }
-
-          if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('이미지가 저장되었습니다.')));
-            // 저장 후 이전 화면으로 돌아가기 (두 번 pop)
-            Navigator.of(context).pop();
-            Navigator.of(context).pop();
-          }
-        } catch (e) {
-          debugPrint('덮어쓰기 실패: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('덮어쓰기 실패: $e')));
-          }
-        }
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final fileName = 'edited_${DateTime.now().millisecondsSinceEpoch}.png';
-        final tempFile = await File(
-          path.join(tempDir.path, fileName),
-        ).writeAsBytes(imageDataToSave);
-        final success = await GallerySaver.saveImage(tempFile.path);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                success == true ? '갤러리에 저장되었습니다.' : '갤러리 저장에 실패했습니다.',
-              ),
-            ),
-          );
-
-          if (success == true) {
-            final galleryModel = Provider.of<GalleryModel>(
-              context,
-              listen: false,
-            );
-            // refreshGallery를 사용하여 앨범 캐시도 함께 초기화
-            await galleryModel.refreshGallery();
-            // 저장 후 이전 화면으로 돌아가기 (두 번 pop)
-            Navigator.of(context).pop();
-            Navigator.of(context).pop();
-          }
+          // 저장 후 이전 화면으로 돌아가기 (두 번 pop)
+          Navigator.of(context).pop();
+          Navigator.of(context).pop();
         }
       }
     } catch (e) {
@@ -242,7 +176,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   }
 
   Future<void> _handleCropComplete() async {
-    await _saveImage(false);
+    await _saveImage();
   }
 
   void _onPanStart(DragStartDetails details) {
@@ -433,12 +367,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     if (_drawingPoints.isNotEmpty) {
       // _drawingPoints.clear();
     }
-    if (_rotation != 0.0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('회전을 초기화한 후 잘라주세요.')));
-      return;
-    }
+    // 회전은 실제 이미지에 적용되므로 별도 체크 불필요
     setState(() {
       _isCropping = !_isCropping;
       _isDrawing = false;
@@ -473,14 +402,6 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   }
 
   void _rotateImage() async {
-    setState(() {
-      if (_isCropping) {
-        _isCropping = false;
-        _resetCropState();
-      }
-      _rotation = (_rotation + 90) % 360;
-    });
-
     // 그림이 그려진 상태에서 회전하는 경우, 그림을 이미지에 적용 후 회전
     if (_drawingPoints.isNotEmpty) {
       await _applyDrawingToImage();
@@ -488,6 +409,14 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
     // 실제 이미지 데이터에 회전 적용
     if (_editedImageData != null) {
+      setState(() {
+        if (_isCropping) {
+          _isCropping = false;
+          _resetCropState();
+        }
+        _isRotating = true;
+      });
+
       try {
         final option = ImageEditorOption()..addOption(RotateOption(90));
 
@@ -500,11 +429,11 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           imageEditorOption: option,
         );
 
-        if (result != null) {
+        if (result != null && mounted) {
           setState(() {
             _editedImageData = result;
-            _rotation = 0.0; // UI 회전은 초기화
             _drawingPoints.clear(); // 그림 그리기 초기화
+            _isRotating = false;
           });
           await _loadImage();
         }
@@ -515,7 +444,11 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         }
       } catch (e) {
         debugPrint('회전 처리 중 오류 발생: $e');
-        // 오류 발생 시 UI 회전만 유지
+        if (mounted) {
+          setState(() {
+            _isRotating = false;
+          });
+        }
       }
     }
   }
@@ -551,16 +484,12 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('저장 옵션'),
-            content: const Text('이미지를 어떻게 저장하시겠습니까?'),
+            title: const Text('저장'),
+            content: const Text('이미지를 새 파일로 저장하시겠습니까?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('덮어쓰기'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('새 파일로 저장'),
+                child: const Text('저장'),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -569,8 +498,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
             ],
           ),
     ).then((value) {
-      if (value == true) _saveImage(true);
-      if (value == false) _saveImage(false);
+      if (value == true) _saveImage();
     });
   }
 
@@ -588,7 +516,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           if (!_isCropping) ...[
             IconButton(
               icon: const Icon(Icons.rotate_right),
-              onPressed: _rotateImage,
+              onPressed: _isRotating ? null : _rotateImage,
             ),
             IconButton(
               icon: Icon(_isDrawing ? Icons.edit_off : Icons.edit),
@@ -615,41 +543,48 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                 scale: _isCropping ? cropModeScale : 1.0,
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeInOut,
-                child: RotatedBox(
-                  quarterTurns: (_rotation / 90).round(),
-                  child:
-                      _editedImageData != null
-                          ? Stack(
-                            fit: StackFit.passthrough,
-                            alignment: Alignment.center,
-                            children: [
-                              Image.memory(
-                                _editedImageData!,
-                                key: _imageKey,
-                                fit: BoxFit.contain,
+                child:
+                    _editedImageData != null
+                        ? Stack(
+                          fit: StackFit.passthrough,
+                          alignment: Alignment.center,
+                          children: [
+                            Image.memory(
+                              _editedImageData!,
+                              key: _imageKey,
+                              fit: BoxFit.contain,
+                            ),
+                            if (_isDrawing)
+                              Positioned.fill(
+                                child: CustomPaint(
+                                  painter: DrawingPainter(
+                                    points: _drawingPoints,
+                                  ),
+                                ),
                               ),
-                              if (_isDrawing)
-                                Positioned.fill(
+                            if (_isCropping && _cropRect != null)
+                              Positioned.fill(
+                                child: IgnorePointer(
                                   child: CustomPaint(
-                                    painter: DrawingPainter(
-                                      points: _drawingPoints,
+                                    painter: CropPainter(cropRect: _cropRect!),
+                                  ),
+                                ),
+                              ),
+                            // 회전 중일 때만 반투명 오버레이와 로딩 인디케이터 표시
+                            if (_isRotating)
+                              Positioned.fill(
+                                child: Container(
+                                  color: Colors.black.withOpacity(0.3),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
-                              if (_isCropping && _cropRect != null)
-                                Positioned.fill(
-                                  child: IgnorePointer(
-                                    child: CustomPaint(
-                                      painter: CropPainter(
-                                        cropRect: _cropRect!,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          )
-                          : const CircularProgressIndicator(),
-                ),
+                              ),
+                          ],
+                        )
+                        : const CircularProgressIndicator(),
               ),
             ),
           ),

@@ -280,14 +280,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  gallery_saver:
+  gallery_saver_plus:
     dependency: "direct main"
     description:
-      name: gallery_saver
-      sha256: df8b7e207ca12d64c71e0710a7ee3bc48aa7206d51cc720716fedb1543a66712
+      name: gallery_saver_plus
+      sha256: "29d7c20d24a7e5a90d9765753180c24ff1194d9a9f0ea545b66fd5ef5fa27c84"
       url: "https://pub.dev"
     source: hosted
-    version: "2.3.2"
+    version: "3.2.8"
   html:
     dependency: transitive
     description:
@@ -300,10 +300,10 @@ packages:
     dependency: transitive
     description:
       name: http
-      sha256: "5895291c13fa8a3bd82e76d5627f69e0d85ca6a30dcac95c4ea19a5d555879c2"
+      sha256: bb2ce4590bc2667c96f318d68cac1b5a7987ec819351d32b1c987239a815e007
       url: "https://pub.dev"
     source: hosted
-    version: "0.13.6"
+    version: "1.5.0"
   http_parser:
     dependency: transitive
     description:

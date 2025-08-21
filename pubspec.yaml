@@ -44,7 +44,7 @@ dependencies:
   just_audio: ^0.9.36
   uuid: ^4.2.2
   image_editor: ^1.6.0
-  gallery_saver: ^2.3.2
+  gallery_saver_plus: ^3.2.8
   video_player: ^2.8.2
   device_info_plus: ^9.1.2
   media_store_plus: ^0.1.3
