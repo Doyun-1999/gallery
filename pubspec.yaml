@@ -36,17 +36,17 @@ dependencies:
   shared_preferences: ^2.2.2
   path: ^1.8.3
   photo_view: ^0.15.0
-  intl: ^0.19.0
+  intl: ^0.20.2
   photo_manager: ^3.0.0
   app_settings: ^6.1.1
-  permission_handler: ^11.3.0
-  record: ^5.0.4
-  just_audio: ^0.9.36
+  permission_handler: ^12.0.1
+  record: ^6.1.1
+  just_audio: ^0.10.4
   uuid: ^4.2.2
   image_editor: ^1.6.0
   gallery_saver_plus: ^3.2.8
   video_player: ^2.8.2
-  device_info_plus: ^9.1.2
+  device_info_plus: ^11.5.0
   media_store_plus: ^0.1.3
 
 
