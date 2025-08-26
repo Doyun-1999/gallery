@@ -34,6 +34,12 @@
     <array>
       <string>_dartVmService._tcp</string>
     </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>디버깅을 위해 로컬 네트워크에 접근합니다.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_dartVmService._tcp</string>
+    </array>
 	<key>NSCameraUsageDescription</key>
 	<string>This Gallery app requires authority to access user's camera to take photos</string>
 	<key>NSMicrophoneUsageDescription</key>
