@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "416466475368",
+    "project_id": "photomemo-39574",
+    "storage_bucket": "photomemo-39574.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:416466475368:android:12231893ae31e709aadedd",
+        "android_client_info": {
+          "package_name": "com.memogallery.memogallery"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASrjYI20KCjs6mCS6PD7Kd0TkdZjNU9NE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
